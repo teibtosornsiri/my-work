@@ -1097,7 +1097,16 @@ define([
 
         try {
             if (!recId || !recType) throw new Error('Missing recType or id');
-            const rec = record.load({ type: recType, id: recId, isDynamic: true });
+
+            // Inventory Detail subrecord editing REQUIRES dynamic mode.
+            // For plain line-field updates (no amount changes), standard mode is used:
+            //   - avoids per-line commitLine re-validation
+            //   - fixes Journal Entry "Transaction was not complete." (dynamic commitLine
+            //     re-checks debit/credit balance on every line commit and breaks the txn)
+            //   - balance is validated once at save() and stays intact (amounts untouched)
+            const hasInvDetail = !!(invDetail && Array.isArray(invDetail) && invDetail.length > 0);
+            const useDynamic = hasInvDetail;
+            const rec = record.load({ type: recType, id: recId, isDynamic: useDynamic });
 
             Object.keys(bodyFields).forEach(fid => {
                 const v = bodyFields[fid];
@@ -1110,21 +1119,47 @@ define([
             if (lineKeys.length > 0) {
                 const cnt = rec.getLineCount({ sublistId });
                 const targets = lineIdValues ? lineIdValues.split(',').map(s => s.trim()) : null;
+
+                // Candidate fields to match "Line ID" against. The chosen lineIdField is
+                // tried first, then common line-identifier fields, because a CSV "Line ID"
+                // exported from SuiteQL is usually transactionline.id / uniquekey, which does
+                // NOT equal the SuiteScript 'line' (sequence) value.
+                const matchFields = [];
+                [lineIdField, 'lineuniquekey', 'line', 'id'].forEach(f => {
+                    if (f && matchFields.indexOf(f) === -1) matchFields.push(f);
+                });
+                const diagSamples = [];  // for the "no match" diagnostic
+
                 for (let i = 0; i < cnt; i++) {
                     if (targets && lineIdField) {
-                        const cur = String(rec.getSublistValue({ sublistId, fieldId: lineIdField, line: i }));
-                        if (targets.indexOf(cur) === -1) continue;
+                        let matched = false;
+                        const rowVals = {};
+                        for (let mf = 0; mf < matchFields.length; mf++) {
+                            let cv;
+                            try { cv = rec.getSublistValue({ sublistId, fieldId: matchFields[mf], line: i }); }
+                            catch (_ignore) { continue; }
+                            if (cv === '' || cv == null) continue;
+                            rowVals[matchFields[mf]] = String(cv);
+                            if (targets.indexOf(String(cv)) !== -1) { matched = true; break; }
+                        }
+                        // Final fallback: 0-based line index (client "Line ID" is often the array position 0,1,2...)
+                        if (!matched && targets.indexOf(String(i)) !== -1) { matched = true; }
+                        rowVals['_index'] = String(i);
+                        if (diagSamples.length < 8) diagSamples.push(rowVals);
+                        if (!matched) continue;
                     }
-                    rec.selectLine({ sublistId, line: i });
-                    lineKeys.forEach(fid => {
-                        const v = lineFields[fid];
-                        if (v === '' || v == null) return;
-                        const n = Number(v);
-                        rec.setCurrentSublistValue({ sublistId, fieldId: fid, value: isNaN(n) ? v : n });
-                    });
 
-                    // ─── Inventory Detail Subrecord ───
-                    if (invDetail && Array.isArray(invDetail) && invDetail.length > 0) {
+                    if (useDynamic) {
+                        // ─── DYNAMIC MODE (only when Inventory Detail is involved) ───
+                        rec.selectLine({ sublistId, line: i });
+                        lineKeys.forEach(fid => {
+                            const v = lineFields[fid];
+                            if (v === '' || v == null) return;
+                            const n = Number(v);
+                            rec.setCurrentSublistValue({ sublistId, fieldId: fid, value: isNaN(n) ? v : n });
+                        });
+
+                        // ─── Inventory Detail Subrecord ───
                         try {
                             const invRec = rec.getCurrentSublistSubrecord({ sublistId, fieldId: 'inventorydetail' });
                             if (invRec) {
@@ -1154,10 +1189,34 @@ define([
                         } catch (invErr) {
                             log.debug('ajaxUpdate invDetail', 'Line ' + i + ': ' + invErr.message);
                         }
+
+                        rec.commitLine({ sublistId });
+                    } else {
+                        // ─── STANDARD MODE (default) — set by line index, no commitLine ───
+                        lineKeys.forEach(fid => {
+                            const v = lineFields[fid];
+                            if (v === '' || v == null) return;
+                            const n = Number(v);
+                            rec.setSublistValue({ sublistId, fieldId: fid, line: i, value: isNaN(n) ? v : n });
+                        });
                     }
 
-                    rec.commitLine({ sublistId });
                     result.lines++;
+                }
+
+                // Guard against silent "success" when a Line ID match found nothing.
+                if (targets && lineIdField && result.lines === 0) {
+                    const seen = {};
+                    diagSamples.forEach(rv => {
+                        Object.keys(rv).forEach(k => {
+                            seen[k] = seen[k] || [];
+                            if (seen[k].length < 8 && seen[k].indexOf(rv[k]) === -1) seen[k].push(rv[k]);
+                        });
+                    });
+                    const avail = Object.keys(seen).map(k => k + '=[' + seen[k].join(',') + ']').join('  ');
+                    throw new Error('No line matched Line ID (' + targets.join(',') + '). '
+                        + 'Available on this record: ' + (avail || '(none)')
+                        + '. ตรวจว่า Line ID ใน CSV ตรงกับ field ไหน แล้วเลือก match field ให้ถูก.');
                 }
             }
 
@@ -1165,8 +1224,8 @@ define([
             log.debug('ajaxUpdate OK', recType + '#' + recId + ' lines:' + result.lines + ' inv:' + result.invLines);
         } catch (e) {
             result.status = 'error';
-            result.error = e.message;
-            log.error('ajaxUpdate Error', { recType, recId, error: e.message });
+            result.error = (e.name && e.name !== 'Error' ? e.name + ': ' : '') + (e.message || String(e));
+            log.error('ajaxUpdate Error', { recType, recId, name: e.name, message: e.message });
         }
 
         context.response.setHeader({ name: 'Content-Type', value: 'application/json' });
