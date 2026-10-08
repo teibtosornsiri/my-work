@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Report CI Options</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Anuphan:wght@400;500;600&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: chooser rail on top, one live sample report below; every color comes from the active skin's tokens. */
+:root{
+  --page:#eef0f3; --page-ink:#1c2a3a; --page-muted:#5b6b7d; --page-line:#d5dbe3; --page-card:#ffffff; --page-accent:#1a3c5e;
+  --ui:"Sarabun","IBM Plex Sans Thai",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--page:#0d1218;--page-ink:#e3eaf2;--page-muted:#94a6ba;--page-line:#2a3a4d;--page-card:#151d27;--page-accent:#7fb0e3;color-scheme:dark}}
+:root[data-theme="dark"]{--page:#0d1218;--page-ink:#e3eaf2;--page-muted:#94a6ba;--page-line:#2a3a4d;--page-card:#151d27;--page-accent:#7fb0e3;color-scheme:dark}
+body{background:var(--page);color:var(--page-ink);font-family:var(--ui)}
+*{box-sizing:border-box}
+
+/* ---------- skins (light first, then dark) ---------- */
+.app{
+  --font:"Sarabun",system-ui,sans-serif; --num:"Sarabun",system-ui,sans-serif;
+  --bg:#f4f6f9; --surface:#fff; --surface-2:#eef3f9; --line:#d5dbe3; --line-strong:#b8c4d3;
+  --text:#1c2a3a; --muted:#5b6b7d; --primary:#1a3c5e; --on-primary:#fff; --primary-soft:#e8f0fe;
+  --neg:#b42318; --pos:#1e7a46; --warn:#b25e09; --shell:#1a3c5e; --shell-ink:#fff; --shell-line:transparent;
+  --th-bg:#eef3f9; --th-ink:#2b4a6f; --total-bg:#e8eef6; --radius:6px; --radius-sm:4px; --th-case:none; --th-track:0;
+  --kpi-style:card;
+}
+.app[data-skin="carbon"]{
+  --font:"IBM Plex Sans","IBM Plex Sans Thai",system-ui,sans-serif; --num:"IBM Plex Mono",ui-monospace,monospace;
+  --bg:#f4f4f4; --surface:#fff; --surface-2:#f4f4f4; --line:#e0e0e0; --line-strong:#8d8d8d;
+  --text:#161616; --muted:#525252; --primary:#0f62fe; --on-primary:#fff; --primary-soft:#edf5ff;
+  --neg:#da1e28; --pos:#198038; --warn:#8e6a00; --shell:#161616; --shell-ink:#f4f4f4; --shell-line:transparent;
+  --th-bg:#e0e0e0; --th-ink:#161616; --total-bg:#e8e8e8; --radius:0px; --radius-sm:0px;
+}
+.app[data-skin="fiori"]{
+  --font:"Noto Sans","Noto Sans Thai",system-ui,sans-serif; --num:"Noto Sans","Noto Sans Thai",sans-serif;
+  --bg:#f5f6f7; --surface:#fff; --surface-2:#f5f6f7; --line:#e5e5e5; --line-strong:#a9b4be;
+  --text:#1d2d3e; --muted:#556b82; --primary:#0064d9; --on-primary:#fff; --primary-soft:#ebf8ff;
+  --neg:#aa0808; --pos:#256f3a; --warn:#c35500; --shell:#fff; --shell-ink:#1d2d3e; --shell-line:#d9d9d9;
+  --th-bg:#fff; --th-ink:#556b82; --total-bg:#f2f6fa; --radius:12px; --radius-sm:8px;
+}
+.app[data-skin="redwood"]{
+  --font:"Source Sans 3","Anuphan",system-ui,sans-serif; --num:"Source Sans 3","Anuphan",sans-serif;
+  --bg:#f5f4f2; --surface:#fff; --surface-2:#f1efed; --line:#e4e1dd; --line-strong:#b5afa9;
+  --text:#161513; --muted:#6f6964; --primary:#2f6f7e; --on-primary:#fff; --primary-soft:#e4f0f2;
+  --neg:#b3311e; --pos:#4f7d23; --warn:#ac630c; --shell:#312d2a; --shell-ink:#fcfbfa; --shell-line:transparent;
+  --th-bg:#f1efed; --th-ink:#3a3632; --total-bg:#ebe8e4; --radius:6px; --radius-sm:4px;
+}
+.app[data-skin="shadcn"]{
+  --font:"Geist","Noto Sans Thai",system-ui,sans-serif; --num:"Geist Mono","Noto Sans Thai",ui-monospace,monospace;
+  --bg:#fafafa; --surface:#fff; --surface-2:#f4f4f5; --line:#e4e4e7; --line-strong:#a1a1aa;
+  --text:#09090b; --muted:#71717a; --primary:#18181b; --on-primary:#fafafa; --primary-soft:#f4f4f5;
+  --neg:#dc2626; --pos:#16a34a; --warn:#d97706; --shell:#fff; --shell-ink:#09090b; --shell-line:#e4e4e7;
+  --th-bg:#fafafa; --th-ink:#71717a; --total-bg:#f4f4f5; --radius:10px; --radius-sm:6px;
+}
+.app[data-mode="dark"]{
+  --bg:#0f1722; --surface:#16212e; --surface-2:#1c2a3a; --line:#2a3a4d; --line-strong:#3a4d63;
+  --text:#e3eaf2; --muted:#94a6ba; --primary:#7fb0e3; --on-primary:#0f1722; --primary-soft:#1d3550;
+  --neg:#ff8a80; --pos:#6fcf97; --warn:#f0b45b; --shell:#0b121b; --shell-ink:#e3eaf2; --shell-line:#2a3a4d;
+  --th-bg:#1c2a3a; --th-ink:#b8cde3; --total-bg:#1d3048;
+}
+.app[data-skin="carbon"][data-mode="dark"]{
+  --bg:#161616; --surface:#262626; --surface-2:#393939; --line:#393939; --line-strong:#6f6f6f;
+  --text:#f4f4f4; --muted:#c6c6c6; --primary:#4589ff; --on-primary:#fff; --primary-soft:#001d6c;
+  --neg:#ff8389; --pos:#42be65; --warn:#f1c21b; --shell:#000; --shell-ink:#f4f4f4; --shell-line:#393939;
+  --th-bg:#393939; --th-ink:#f4f4f4; --total-bg:#333;
+}
+.app[data-skin="fiori"][data-mode="dark"]{
+  --bg:#12171c; --surface:#1d232a; --surface-2:#232a31; --line:#34404c; --line-strong:#5b738b;
+  --text:#eaecee; --muted:#a9b4be; --primary:#4db1ff; --on-primary:#12171c; --primary-soft:#0d3a63;
+  --neg:#ff8888; --pos:#97dd40; --warn:#ffc847; --shell:#12171c; --shell-ink:#eaecee; --shell-line:#34404c;
+  --th-bg:#1d232a; --th-ink:#a9b4be; --total-bg:#24303c;
+}
+.app[data-skin="redwood"][data-mode="dark"]{
+  --bg:#1a1816; --surface:#24211f; --surface-2:#2e2a27; --line:#3b3633; --line-strong:#5d5650;
+  --text:#f1efed; --muted:#a8a19b; --primary:#6fb6c6; --on-primary:#1a1816; --primary-soft:#1f3a40;
+  --neg:#ff9a85; --pos:#9bcb6a; --warn:#e9a94f; --shell:#100f0e; --shell-ink:#f1efed; --shell-line:#3b3633;
+  --th-bg:#2e2a27; --th-ink:#d9d4cf; --total-bg:#35302c;
+}
+.app[data-skin="shadcn"][data-mode="dark"]{
+  --bg:#09090b; --surface:#0f0f11; --surface-2:#18181b; --line:#27272a; --line-strong:#52525b;
+  --text:#fafafa; --muted:#a1a1aa; --primary:#fafafa; --on-primary:#09090b; --primary-soft:#27272a;
+  --neg:#f87171; --pos:#4ade80; --warn:#fbbf24; --shell:#09090b; --shell-ink:#fafafa; --shell-line:#27272a;
+  --th-bg:#0f0f11; --th-ink:#a1a1aa; --total-bg:#18181b;
+}
+.app[data-skin="carbon"]{--th-case:none}
+.app[data-skin="fiori"],.app[data-skin="shadcn"]{--th-case:none}
+
+/* ---------- chooser ---------- */
+.wrap{max-width:1280px;margin:0 auto;padding-inline:16px;padding-block:20px 48px;display:grid;gap:16px}
+.intro h1{font-size:22px;margin:0 0 4px;text-wrap:balance}
+.intro p{margin:0;color:var(--page-muted);font-size:14px;max-width:75ch;line-height:1.55}
+.picker{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.opt{all:unset;cursor:pointer;display:grid;gap:8px;padding:12px;border:1.5px solid var(--page-line);border-radius:10px;background:var(--page-card);min-width:0}
+.opt:focus-visible{outline:2px solid var(--page-accent);outline-offset:2px}
+.opt[aria-pressed="true"]{border-color:var(--page-accent);box-shadow:0 0 0 1px var(--page-accent)}
+.opt .row1{display:flex;align-items:baseline;gap:8px}
+.opt .letter{font-weight:700;font-size:13px;color:var(--page-accent)}
+.opt .name{font-weight:600;font-size:14.5px}
+.opt .src{font-size:12px;color:var(--page-muted);line-height:1.4}
+.sw{display:flex;gap:4px}
+.sw i{width:22px;height:14px;border-radius:3px;border:1px solid rgba(127,127,127,.25)}
+.controls{display:flex;flex-wrap:wrap;gap:14px 22px;align-items:center;font-size:13px}
+.seg{display:inline-flex;border:1px solid var(--page-line);border-radius:8px;overflow:hidden;background:var(--page-card)}
+.seg button{all:unset;cursor:pointer;padding:6px 12px;font-size:13px;color:var(--page-muted)}
+.seg button[aria-pressed="true"]{background:var(--page-accent);color:var(--page)}
+.seg button:focus-visible{outline:2px solid var(--page-accent);outline-offset:-2px}
+.ctl-label{color:var(--page-muted);margin-right:6px}
+.pickline{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:13px;padding:10px 12px;border:1px dashed var(--page-line);border-radius:8px;background:var(--page-card)}
+.pickline code{font-family:ui-monospace,monospace;font-size:12.5px}
+.pickline button{all:unset;cursor:pointer;padding:4px 10px;border-radius:6px;border:1px solid var(--page-line);font-size:12.5px}
+.pickline button:focus-visible{outline:2px solid var(--page-accent)}
+.notes{display:grid;gap:6px;font-size:13px;color:var(--page-muted);line-height:1.55}
+.notes b{color:var(--page-ink)}
+.notes a{color:var(--page-accent)}
+
+/* ---------- report (driven by skin tokens) ---------- */
+.app{font-family:var(--font);color:var(--text);background:var(--bg);border:1px solid var(--page-line);border-radius:12px;overflow:hidden;min-width:0;font-size:13.5px}
+.app.compact{font-size:12.5px}
+.shell{display:flex;align-items:center;gap:12px;padding:10px 18px;background:var(--shell);color:var(--shell-ink);border-bottom:1px solid var(--shell-line);flex-wrap:wrap}
+.shell .logo{width:26px;height:26px;border-radius:var(--radius-sm);display:grid;place-items:center;font-weight:700;font-size:12px;border:1.5px solid currentColor;opacity:.9}
+.shell .crumb{font-size:12.5px;opacity:.8}
+.shell .crumb b{opacity:1;font-weight:600}
+.shell .sp{flex:1}
+.shell .user{font-size:12px;opacity:.8}
+.head{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;padding:18px 20px 14px;background:var(--surface);border-bottom:1px solid var(--line)}
+.head .t{flex:1;min-width:220px}
+.head h2{margin:0;font-size:1.45em;font-weight:600;letter-spacing:-.005em}
+.head .meta{margin-top:4px;color:var(--muted);font-size:.93em;display:flex;flex-wrap:wrap;gap:4px 14px}
+.btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--radius-sm);font-weight:500;font-size:.95em;border:1px solid var(--line-strong);background:var(--surface);color:var(--text);white-space:nowrap}
+.btn.primary{background:var(--primary);color:var(--on-primary);border-color:var(--primary)}
+.btn:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.btn svg{width:14px;height:14px}
+.app[data-skin="fiori"] .btn{border-radius:8px}
+.app[data-skin="carbon"] .btn{padding:9px 16px}
+.body{display:grid;grid-template-columns:1fr;gap:14px;padding:16px 20px 20px;min-width:0}
+.app.side .body{grid-template-columns:230px minmax(0,1fr)}
+@media (max-width:760px){.app.side .body{grid-template-columns:1fr}}
+.main{display:grid;gap:14px;min-width:0}
+
+.filters{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:flex-end;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
+.app.side .filters{flex-direction:column;align-items:stretch;align-self:start}
+.f{display:grid;gap:4px;min-width:140px;flex:1 1 140px}
+.app.side .f{flex:none}
+.f label{font-size:.85em;color:var(--muted);font-weight:500}
+.f select,.f input{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--radius-sm);padding:6px 8px;width:100%;min-width:0}
+.app[data-skin="carbon"] .f select,.app[data-skin="carbon"] .f input{background:var(--surface-2);border:0;border-bottom:1px solid var(--line-strong);padding:8px}
+.f select:focus-visible,.f input:focus-visible{outline:2px solid var(--primary);outline-offset:0}
+.filters .actions{display:flex;gap:8px}
+.app.side .filters .actions{margin-top:4px}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.kpi{padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);display:grid;gap:2px;min-width:0}
+.kpi .k{font-size:.86em;color:var(--muted)}
+.kpi .v{font-family:var(--num);font-size:1.5em;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.kpi .d{font-size:.85em;color:var(--muted)}
+.kpi.alert .v{color:var(--neg)}
+.app[data-skin="carbon"] .kpi{border:0;border-top:3px solid var(--line)}
+.app[data-skin="carbon"] .kpi.alert{border-top-color:var(--neg)}
+.app[data-skin="fiori"] .kpi{box-shadow:0 0 2px rgba(34,53,72,.16),0 2px 4px rgba(34,53,72,.08);border:0}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);min-width:0;overflow:hidden}
+.app[data-skin="fiori"] .panel{border:0;box-shadow:0 0 2px rgba(34,53,72,.16),0 2px 4px rgba(34,53,72,.08)}
+.tabs{display:flex;gap:2px;padding:0 12px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tab{all:unset;cursor:pointer;padding:10px 12px;color:var(--muted);font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;display:inline-flex;gap:6px;align-items:center}
+.tab[aria-selected="true"]{color:var(--text);border-bottom-color:var(--primary)}
+.app[data-skin="shadcn"] .tabs{padding:8px;border-bottom:1px solid var(--line);gap:4px}
+.app[data-skin="shadcn"] .tab{border:0;padding:6px 12px;border-radius:6px;margin:0}
+.app[data-skin="shadcn"] .tab[aria-selected="true"]{background:var(--surface-2)}
+.tab:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}
+.count{font-size:.8em;padding:1px 7px;border-radius:999px;background:var(--surface-2);color:var(--muted);font-family:var(--num)}
+.tbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line);color:var(--muted);font-size:.92em}
+.tbar .sp{flex:1}
+.tbar input{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);padding:5px 8px;width:200px;max-width:100%}
+
+.scroll{overflow:auto;max-height:440px}
+table{border-collapse:separate;border-spacing:0;width:100%;min-width:820px}
+th,td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+.app.compact th,.app.compact td{padding:5px 10px}
+th{position:sticky;top:0;z-index:1;background:var(--th-bg);color:var(--th-ink);font-weight:600;font-size:.9em;text-transform:var(--th-case);letter-spacing:var(--th-track)}
+.app[data-skin="fiori"] th,.app[data-skin="shadcn"] th{border-bottom:1px solid var(--line-strong)}
+td.n,th.n{text-align:right;font-family:var(--num);font-variant-numeric:tabular-nums}
+td.n.neg{color:var(--neg)}
+td.zero{color:var(--muted)}
+tbody tr:hover td{background:color-mix(in srgb,var(--primary) 6%,transparent)}
+tr.grp td{background:var(--surface-2);font-weight:600;color:var(--text);border-bottom-color:var(--line)}
+tr.sub td{font-weight:600;background:var(--surface);border-bottom:1px solid var(--line-strong)}
+tfoot td{position:sticky;bottom:0;background:var(--total-bg);font-weight:700;border-top:2px solid var(--line-strong);border-bottom:0}
+.vend{display:grid;gap:1px;white-space:normal;min-width:220px}
+.vend small{color:var(--muted);font-family:var(--num);font-size:.85em}
+a.lnk{color:var(--primary);text-decoration:none}
+a.lnk:hover{text-decoration:underline}
+.app[data-skin="shadcn"] a.lnk{text-decoration:underline;text-underline-offset:2px}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font-size:.82em;font-weight:500;white-space:nowrap}
+.badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.b-neg{color:var(--neg);background:color-mix(in srgb,var(--neg) 12%,transparent)}
+.b-warn{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent)}
+.b-pos{color:var(--pos);background:color-mix(in srgb,var(--pos) 12%,transparent)}
+.b-info{color:var(--primary);background:var(--primary-soft)}
+.app[data-skin="carbon"] .badge{border-radius:0}
+.app[data-mode="dark"][data-skin="shadcn"] .b-info{color:var(--text)}
+
+.foot{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;padding:10px 12px;color:var(--muted);font-size:.9em}
+.pager{display:flex;gap:4px}
+.pager button{all:unset;cursor:pointer;min-width:28px;text-align:center;padding:3px 6px;border-radius:var(--radius-sm);border:1px solid var(--line)}
+.pager button[aria-current="page"]{background:var(--primary);color:var(--on-primary);border-color:var(--primary)}
+.empty{display:grid;justify-items:center;gap:6px;padding:48px 16px;text-align:center;color:var(--muted)}
+.empty b{color:var(--text);font-size:1.05em}
+.empty svg{width:36px;height:36px;color:var(--line-strong)}
+.states{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.state{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;display:grid;gap:8px;min-width:0}
+.state h4{margin:0;font-size:.9em;color:var(--muted);font-weight:500}
+.skel{height:10px;border-radius:4px;background:linear-gradient(90deg,var(--surface-2),var(--line),var(--surface-2));background-size:200% 100%;animation:sh 1.4s infinite}
+@keyframes sh{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){.skel{animation:none}}
+.toast{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:var(--radius-sm);border-left:3px solid var(--neg);background:color-mix(in srgb,var(--neg) 8%,var(--surface));font-size:.92em}
+.toast.ok{border-left-color:var(--pos);background:color-mix(in srgb,var(--pos) 8%,var(--surface))}
+.sample{font-size:11.5px;color:var(--page-muted);text-align:right}
+</style>
+
+<div class="wrap">
+  <header class="intro">
+    <h1>มาตรฐานหน้าตารายงาน — เลือกแนวทาง</h1>
+    <p>รายงานตัวอย่างเดียวกัน (AP Aging) แสดงใน 5 สไตล์ แต่ละแบบอ้างอิง design system ที่เป็น open source บน GitHub กดเลือกแบบด้านล่าง แล้วลองสลับรูปแบบ filter ความแน่นของตาราง และโหมดมืดได้ ตัวเลขทั้งหมดเป็นข้อมูลตัวอย่าง</p>
+  </header>
+
+  <div class="picker" id="picker" role="group" aria-label="สไตล์"></div>
+
+  <div class="controls">
+    <span><span class="ctl-label">Filter</span><span class="seg" id="segLayout"><button data-v="top" aria-pressed="true">แถบบน</button><button data-v="side" aria-pressed="false">แถบซ้าย</button></span></span>
+    <span><span class="ctl-label">ความแน่น</span><span class="seg" id="segDensity"><button data-v="normal" aria-pressed="true">ปกติ</button><button data-v="compact" aria-pressed="false">Compact</button></span></span>
+    <span><span class="ctl-label">โหมด</span><span class="seg" id="segMode"><button data-v="auto" aria-pressed="true">ตามระบบ</button><button data-v="light" aria-pressed="false">สว่าง</button><button data-v="dark" aria-pressed="false">มืด</button></span></span>
+  </div>
+
+  <div class="app" id="app" data-skin="navy" data-mode="light">
+    <div class="shell">
+      <span class="logo">TB</span>
+      <span class="crumb">Reports / Payables / <b>AP Aging Combined</b></span>
+      <span class="sp"></span>
+      <span class="user">Accounting Manager · SB1</span>
+    </div>
+    <div class="head">
+      <div class="t">
+        <h2>AP Aging Combined</h2>
+        <div class="meta"><span>As of 30/09/2026</span><span>Subsidiary: ทุกบริษัท</span><span>Currency: THB (base)</span><span>อัปเดต 08/10/2026 09:42</span></div>
+      </div>
+      <button class="btn" type="button"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2v8m0 0l-3-3m3 3l3-3M3 13h10"/></svg>CSV</button>
+      <button class="btn" type="button"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2v8m0 0l-3-3m3 3l3-3M3 13h10"/></svg>Excel</button>
+      <button class="btn primary" type="button">ส่งอีเมลสรุป</button>
+    </div>
+    <div class="body">
+      <form class="filters" id="filters">
+        <div class="f"><label for="fSub">Subsidiary</label><select id="fSub"><option>ทุกบริษัท</option><option>TB Holding</option><option>TB Logistics</option></select></div>
+        <div class="f"><label for="fDate">As of date</label><input id="fDate" value="30/09/2026"></div>
+        <div class="f"><label for="fVen">Vendor</label><input id="fVen" placeholder="ชื่อหรือรหัสผู้ขาย"></div>
+        <div class="f"><label for="fBucket">Aging basis</label><select id="fBucket"><option>Due date</option><option>Bill date</option></select></div>
+        <div class="actions"><button class="btn" type="reset">ล้าง</button><button class="btn primary" type="submit">แสดงรายงาน</button></div>
+      </form>
+      <div class="main">
+        <div class="kpis" id="kpis"></div>
+        <div class="panel">
+          <div class="tabs" role="tablist">
+            <button class="tab" role="tab" aria-selected="true" data-tab="sum">สรุปตามผู้ขาย <span class="count" id="cSum"></span></button>
+            <button class="tab" role="tab" aria-selected="false" data-tab="det">รายละเอียด Bill <span class="count" id="cDet"></span></button>
+            <button class="tab" role="tab" aria-selected="false" data-tab="exc">Exceptions <span class="count">0</span></button>
+          </div>
+          <div id="pane"></div>
+        </div>
+        <div class="states">
+          <div class="state"><h4>Loading</h4><div class="skel" style="width:80%"></div><div class="skel"></div><div class="skel" style="width:60%"></div></div>
+          <div class="state"><h4>Error</h4><div class="toast">ดึงข้อมูลไม่สำเร็จ: SuiteQL timeout เกิน 60 วินาที ลองเลือกช่วงวันที่สั้นลง หรือระบุ Subsidiary</div></div>
+          <div class="state"><h4>Success</h4><div class="toast ok">ส่งไฟล์ Excel ให้ 3 ผู้รับแล้ว</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pickline"><span>ตัวเลือกปัจจุบัน:</span><code id="pickText"></code><button type="button" id="copyBtn">คัดลอก</button><span id="copyMsg" class="sample"></span></div>
+
+  <div class="notes" id="notes"></div>
+</div>
+
+<script>
+const SKINS = [
+  {id:"navy", letter:"A", name:"Ledger Navy", src:"ต่อยอดจากโทนที่ใช้อยู่ใน THL Prepayment / DA Reclass", repo:null,
+   sw:["#1a3c5e","#eef3f9","#d5dbe3","#b42318","#1e7a46"],
+   note:"เปลี่ยนน้อยที่สุด ผู้ใช้เดิมคุ้นตา ฟอนต์ Sarabun เดียวกับเอกสาร Teibto"},
+  {id:"carbon", letter:"B", name:"IBM Carbon", src:"carbon-design-system/carbon · ★9.5k", repo:"https://github.com/carbon-design-system/carbon",
+   sw:["#0f62fe","#161616","#e0e0e0","#da1e28","#198038"],
+   note:"เหลี่ยม คม แน่น ตัวเลขฟอนต์ mono อ่านคอลัมน์ง่าย เหมาะรายงานตัวเลขเยอะ มี IBM Plex Sans Thai"},
+  {id:"fiori", letter:"C", name:"SAP Fiori Horizon", src:"UI5/webcomponents · ★1.8k", repo:"https://github.com/UI5/webcomponents",
+   sw:["#0064d9","#1d2d3e","#f5f6f7","#aa0808","#256f3a"],
+   note:"ภาษา ERP ที่ผู้ใช้บัญชีคุ้น การ์ดมน มีเงา ดูเป็นมิตร"},
+  {id:"redwood", letter:"D", name:"Oracle Redwood", src:"oracle/oraclejet · ★0.5k", repo:"https://github.com/oracle/oraclejet",
+   sw:["#312d2a","#2f6f7e","#f1efed","#b3311e","#4f7d23"],
+   note:"ใกล้หน้าตา NetSuite UI ใหม่ที่สุด รายงานจะกลืนกับระบบ (ฟอนต์ Oracle Sans ใช้นอก Oracle ไม่ได้ จึงใช้ Source Sans 3 แทน)"},
+  {id:"shadcn", letter:"E", name:"shadcn / Tremor", src:"shadcn-ui/ui · ★125k · tremorlabs/tremor", repo:"https://github.com/shadcn-ui/ui",
+   sw:["#18181b","#71717a","#f4f4f5","#dc2626","#16a34a"],
+   note:"โมเดิร์น เรียบ ขาวดำ ใช้สีเฉพาะสถานะ เหมาะ dashboard/ผู้บริหาร"}
+];
+
+const VENDORS = [
+  {sub:"TB Holding", code:"V-10021", name:"บริษัท ไทยรุ่งเรืองวัสดุภัณฑ์ จำกัด", b:[182400,96500,0,0,0], st:"ok"},
+  {sub:"TB Holding", code:"V-10045", name:"บริษัท สยามพาเลท แอนด์ แพ็คกิ้ง จำกัด", b:[54200,38750,41200,0,0], st:"ok"},
+  {sub:"TB Holding", code:"V-10088", name:"ห้างหุ้นส่วนจำกัด เจริญการช่าง", b:[0,0,12800,22450,68900], st:"over"},
+  {sub:"TB Holding", code:"V-10102", name:"Kowa Industrial Supply Co., Ltd.", b:[-45000,0,0,0,0], st:"pre"},
+  {sub:"TB Holding", code:"V-10117", name:"บริษัท อีสเทิร์นซีบอร์ด ทรานสปอร์ต จำกัด", b:[126300,0,0,0,0], st:"ok"},
+  {sub:"TB Holding", code:"V-10130", name:"บริษัท นครไทยไอที โซลูชั่นส์ จำกัด", b:[0,18900,18900,18900,0], st:"hold"},
+  {sub:"TB Logistics", code:"V-20004", name:"บริษัท บางนาน้ำมันเชื้อเพลิง จำกัด", b:[312650,141220,0,0,0], st:"ok"},
+  {sub:"TB Logistics", code:"V-20019", name:"บริษัท แหลมฉบังคอนเทนเนอร์ เซอร์วิส จำกัด", b:[88000,0,64500,0,0], st:"ok"},
+  {sub:"TB Logistics", code:"V-20027", name:"บริษัท ไทยไทร์ เซ็นเตอร์ จำกัด", b:[0,0,0,0,153400], st:"over"},
+  {sub:"TB Logistics", code:"V-20031", name:"Global Freight Partners Pte. Ltd.", b:[24870,-3200,0,0,0], st:"ok"},
+  {sub:"TB Logistics", code:"V-20044", name:"บริษัท ศรีราชา เซฟตี้ อีควิปเม้นท์ จำกัด", b:[15600,9800,0,0,0], st:"ok"}
+];
+const BILLS = [
+  ["VB-2026-08812","V-10088","2026-05-18","2026-06-17",68900,"over"],
+  ["VB-2026-09104","V-10088","2026-06-22","2026-07-22",22450,"over"],
+  ["VB-2026-09977","V-10088","2026-07-30","2026-08-29",12800,"warn"],
+  ["VB-2026-10230","V-20027","2026-05-02","2026-06-01",153400,"over"],
+  ["VB-2026-11021","V-10130","2026-07-10","2026-08-09",18900,"hold"],
+  ["VB-2026-11388","V-10130","2026-08-11","2026-09-10",18900,"hold"],
+  ["VP-2026-00412","V-10102","2026-09-25","2026-09-25",-45000,"pre"],
+  ["VC-2026-00133","V-20031","2026-09-02","2026-09-02",-3200,"pre"]
+];
+const STATUS = {ok:["b-pos","ปกติ"], over:["b-neg","เกิน 90 วัน"], hold:["b-warn","ระงับจ่าย"], pre:["b-info","จ่ายล่วงหน้า"], warn:["b-warn","ใกล้ครบ 90"]};
+const BUCKETS = ["Current","1–30","31–60","61–90","> 90"];
+
+const fmt = n => { if (n === 0) return "–"; const s = Math.abs(n).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); return n < 0 ? "(" + s + ")" : s; };
+const sum = a => a.reduce((x,y)=>x+y,0);
+const cell = n => `<td class="n${n<0?" neg":""}${n===0?" zero":""}">${fmt(n)}</td>`;
+const badge = s => `<span class="badge ${STATUS[s][0]}">${STATUS[s][1]}</span>`;
+const thd = s => s.split("-").reverse().join("/");
+
+function summaryTable(){
+  const subs = [...new Set(VENDORS.map(v=>v.sub))];
+  let body = "", grand = [0,0,0,0,0];
+  subs.forEach(s=>{
+    const rows = VENDORS.filter(v=>v.sub===s);
+    body += `<tr class="grp"><td colspan="8">${s} · ${rows.length} ผู้ขาย</td></tr>`;
+    const st = [0,0,0,0,0];
+    rows.forEach(v=>{
+      v.b.forEach((x,i)=>{st[i]+=x;grand[i]+=x});
+      body += `<tr><td><span class="vend"><a class="lnk" href="#">${v.name}</a><small>${v.code}</small></span></td>${badge(v.st).replace(/^/,"<td>")}</td>${v.b.map(cell).join("")}${cell(sum(v.b))}</tr>`;
+    });
+    body += `<tr class="sub"><td colspan="2">รวม ${s}</td>${st.map(cell).join("")}${cell(sum(st))}</tr>`;
+  });
+  return `<div class="tbar"><span>${VENDORS.length} ผู้ขาย · ยอดติดลบ = เงินจ่ายล่วงหน้า / ใบลดหนี้</span><span class="sp"></span><input aria-label="ค้นหาในตาราง" placeholder="ค้นหาในตาราง"></div>
+  <div class="scroll"><table><thead><tr><th>ผู้ขาย</th><th>สถานะ</th>${BUCKETS.map(b=>`<th class="n">${b}</th>`).join("")}<th class="n">ยอดคงค้าง</th></tr></thead>
+  <tbody>${body}</tbody><tfoot><tr><td colspan="2">รวมทั้งหมด</td>${grand.map(cell).join("")}${cell(sum(grand))}</tr></tfoot></table></div>
+  <div class="foot"><span>แสดง 1–${VENDORS.length} จาก ${VENDORS.length}</span><span class="pager"><button aria-current="page">1</button><button>2</button><button>›</button></span></div>`;
+}
+function detailTable(){
+  const name = c => VENDORS.find(v=>v.code===c).name;
+  const asof = new Date("2026-09-30");
+  const rows = BILLS.map(b=>{
+    const days = Math.max(0, Math.round((asof - new Date(b[3]))/864e5));
+    return `<tr><td><a class="lnk" href="#">${b[0]}</a></td><td style="white-space:normal;min-width:220px">${name(b[1])}</td><td class="n">${thd(b[2])}</td><td class="n">${thd(b[3])}</td><td class="n${days>90?" neg":""}">${days}</td>${cell(b[4])}<td>${badge(b[5])}</td></tr>`;
+  }).join("");
+  const tot = sum(BILLS.map(b=>b[4]));
+  return `<div class="tbar"><span>เฉพาะรายการที่ต้องติดตาม</span></div><div class="scroll"><table><thead><tr><th>เลขที่</th><th>ผู้ขาย</th><th class="n">วันที่ Bill</th><th class="n">ครบกำหนด</th><th class="n">เกิน (วัน)</th><th class="n">ยอดคงค้าง</th><th>สถานะ</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="5">รวม</td>${cell(tot)}<td></td></tr></tfoot></table></div>`;
+}
+function emptyState(){
+  return `<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="18" cy="17" r="3"/></svg><b>ไม่พบ Exception</b><span>ทุก Bill มีวันครบกำหนดและ Subsidiary ครบถ้วน</span></div>`;
+}
+function renderKpis(){
+  const all = VENDORS.flatMap(v=>v.b);
+  const total = sum(all), over = sum(VENDORS.map(v=>v.b[4])), cur = sum(VENDORS.map(v=>v.b[0]));
+  const k = (label,val,d,cls="") => `<div class="kpi ${cls}"><span class="k">${label}</span><span class="v">${val}</span><span class="d">${d}</span></div>`;
+  const m = n => (n/1e6).toFixed(2) + " ลบ.";
+  document.getElementById("kpis").innerHTML =
+    k("ยอดเจ้าหนี้คงค้าง", m(total), "THB " + fmt(total)) +
+    k("ยังไม่ครบกำหนด", m(cur), Math.round(cur/total*100) + "% ของยอดรวม") +
+    k("เกิน 90 วัน", m(over), "2 ผู้ขาย · ต้องติดตาม", "alert") +
+    k("ระงับจ่าย", "1", "นครไทยไอที · รอใบกำกับแก้ไข");
+}
+
+const state = {skin:"navy", layout:"top", density:"normal", mode:"auto", tab:"sum"};
+try { Object.assign(state, JSON.parse(localStorage.getItem("rci") || "{}")); } catch(e) {}
+const app = document.getElementById("app");
+
+function hostDark(){
+  const t = document.documentElement.getAttribute("data-theme");
+  if (t === "dark") return true; if (t === "light") return false;
+  return matchMedia("(prefers-color-scheme: dark)").matches;
+}
+function apply(){
+  app.dataset.skin = state.skin;
+  app.dataset.mode = state.mode === "auto" ? (hostDark() ? "dark" : "light") : state.mode;
+  app.classList.toggle("side", state.layout === "side");
+  app.classList.toggle("compact", state.density === "compact");
+  document.querySelectorAll(".opt").forEach(b=>b.setAttribute("aria-pressed", b.dataset.id === state.skin));
+  [["segLayout","layout"],["segDensity","density"],["segMode","mode"]].forEach(([id,key])=>
+    document.querySelectorAll("#"+id+" button").forEach(b=>b.setAttribute("aria-pressed", b.dataset.v === state[key])));
+  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-selected", t.dataset.tab === state.tab));
+  document.getElementById("pane").innerHTML = state.tab === "sum" ? summaryTable() : state.tab === "det" ? detailTable() : emptyState();
+  const s = SKINS.find(x=>x.id===state.skin);
+  const L = {top:"Filter แถบบน", side:"Filter แถบซ้าย"}[state.layout], D = state.density === "compact" ? "Compact" : "ปกติ";
+  document.getElementById("pickText").textContent = `${s.letter} ${s.name} + ${L} + ${D}`;
+  document.getElementById("notes").innerHTML = SKINS.map(x=>
+    `<div><b>${x.letter} · ${x.name}</b>: ${x.note}${x.repo ? ` · <a href="${x.repo}" target="_blank" rel="noopener">${x.src.split(" ·")[0]}</a>` : ""}</div>`).join("");
+  try { localStorage.setItem("rci", JSON.stringify(state)); } catch(e) {}
+}
+
+document.getElementById("picker").innerHTML = SKINS.map(s=>
+  `<button class="opt" type="button" data-id="${s.id}" aria-pressed="false"><span class="row1"><span class="letter">${s.letter}</span><span class="name">${s.name}</span></span><span class="sw">${s.sw.map(c=>`<i style="background:${c}"></i>`).join("")}</span><span class="src">${s.src}</span></button>`).join("");
+document.getElementById("picker").addEventListener("click", e=>{const b=e.target.closest(".opt"); if(b){state.skin=b.dataset.id; apply();}});
+[["segLayout","layout"],["segDensity","density"],["segMode","mode"]].forEach(([id,key])=>
+  document.getElementById(id).addEventListener("click", e=>{const b=e.target.closest("button"); if(b){state[key]=b.dataset.v; apply();}}));
+document.querySelector(".tabs").addEventListener("click", e=>{const t=e.target.closest(".tab"); if(t){state.tab=t.dataset.tab; apply();}});
+document.getElementById("filters").addEventListener("submit", e=>e.preventDefault());
+document.getElementById("pane").addEventListener("click", e=>{ if (e.target.closest("a.lnk")) e.preventDefault(); });
+document.getElementById("copyBtn").addEventListener("click", ()=>{
+  const txt = document.getElementById("pickText").textContent, msg = document.getElementById("copyMsg");
+  navigator.clipboard.writeText(txt).then(()=>msg.textContent="คัดลอกแล้ว").catch(()=>{
+    const r = document.createRange(); r.selectNodeContents(document.getElementById("pickText"));
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); msg.textContent = "กด Cmd+C เพื่อคัดลอก";
+  });
+});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", apply);
+new MutationObserver(apply).observe(document.documentElement, {attributes:true, attributeFilter:["data-theme"]});
+
+renderKpis();
+document.getElementById("cSum").textContent = VENDORS.length;
+document.getElementById("cDet").textContent = BILLS.length;
+apply();
+</script>
+
+</html>
