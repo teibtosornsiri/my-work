@@ -10,6 +10,6 @@
 | [`batch-delete-saved-csv-import/`](batch-delete-saved-csv-import/) | Suitelet สำหรับลบ Saved CSV Import Template ทีละหลายตัว พร้อมตัวกรอง Owner / Record Type / ชื่อ |
 | [`batch-record-update/`](batch-record-update/) | Suitelet แก้ field หัวเอกสาร บรรทัด และ Inventory Detail ทีละหลาย record จาก CSV หรือ SuiteQL |
 | [`tools/codecmp/`](tools/codecmp/) | สคริปต์ Python เทียบโค้ดสองโฟลเดอร์ (SB vs PROD) ได้ report.md · summary.json · diff |
-| [`doc-style/`](doc-style/) | สำนวนภาษาไทยสำหรับ User Guide ส่งลูกค้า |
+| [`doc-style/`](doc-style/) | สำนวนภาษาไทยสำหรับ User Guide ส่งลูกค้า · ชุดสร้าง User Guide .docx จาก Markdown |
 
 แต่ละโฟลเดอร์มี README ของตัวเองบอกวิธีใช้และข้อจำกัด

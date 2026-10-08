@@ -1,0 +1,13 @@
+{
+  "title_th": "คู่มือการใช้งานระบบ ACME Stock Report",
+  "title_en": "ACME Stock Report User Guide",
+  "customer": "ACME Manufacturing Co., Ltd.",
+  "customer_full": "ACME MANUFACTURING CO.,LTD.",
+  "project": "Oracle NetSuite Implementation",
+  "phase": "1.0",
+  "owner": "Somchai Jaidee",
+  "doc_name": "ACME Stock Report",
+  "history": [
+    { "rev": "0.1", "date": "2026-07-11", "author": "Somchai J.", "summary": "Initial version" }
+  ]
+}

@@ -5,5 +5,6 @@
 | ไฟล์ | เนื้อหา |
 |---|---|
 | [`thai-userguide-style.md`](thai-userguide-style.md) | สำนวนภาษาไทยใน User Guide: ใช้คำให้สม่ำเสมอทั้งเล่ม · การเรียกชื่อปุ่มและหน้าจอ · สิ่งที่ห้ามหลุดเข้าไปในฉบับส่งลูกค้า |
+| [`userguide-kit/`](userguide-kit/) | ชุดสร้าง User Guide .docx ตาม layout ทีม: เขียน Markdown + config แล้วได้เล่มพร้อมปก · Project Information · Version History · สารบัญ ใน 1 คำสั่ง มีตัวอย่างครบชุด (บริษัทสมมติ ACME) |
 
-ไฟล์นี้คุมเรื่องคำอย่างเดียว ส่วน layout และการ build เป็น `.docx` อยู่ใน skill `teibto-doc-standard` ของทีม ยังไม่ได้ขึ้น repo นี้
+`thai-userguide-style.md` คุมเรื่องคำ ส่วน `userguide-kit/` คุม layout และการ build เป็น `.docx` อ่านไฟล์คำก่อนเริ่มเขียนเนื้อหา
