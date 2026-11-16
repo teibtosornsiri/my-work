@@ -125,7 +125,7 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
          */
         function buildShell(ui, per, ctx) {
             const days = L.daysBetween(per.fromYmd, per.toYmd, 92);
-            const boot = { days, from: per.fromYmd, to: per.toYmd, ajaxUrl: selfUrl({}) };
+            const boot = { days, from: per.fromYmd, to: per.toYmd, ajaxUrl: selfUrl({}), conc: Math.max(1, Math.min(6, Number(CFG.LOAD_CONCURRENCY) || 3)) };
             const disabledBtn = (id, label, kind) => '<a id="' + id + '" class="btn ' + kind + '" style="opacity:.45;pointer-events:none" href="#">' + UI.esc(label) + '</a>';
             const html = ui.render([
                 ui.header({
@@ -144,9 +144,20 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
                 ui.card({ title: 'ความคืบหน้า', body: '<div id="tbdll-status">กำลังเริ่ม…</div>'
                     + '<div style="height:8px;border-radius:4px;background:#e5e7eb;overflow:hidden;margin-top:8px"><div id="tbdll-bar" style="height:100%;width:0;background:var(--primary,#2563eb);transition:width .2s"></div></div>'
                     + '<div id="tbdll-log" style="margin-top:8px;font-size:12px;color:#6b7280;max-height:96px;overflow:auto"></div>' }),
-                '<div id="tbdll-res"></div>'
+                '<div id="tbdll-res"></div>',
+                detailModal()
             ]);
             return html + '<script>window.TBDLL_REPORT=' + JSON.stringify(boot).replace(/</g, '\\u003c') + ';</script><script>' + REPORT_JS + '</script>' + loadingOverlay(per);
+        }
+
+        /** กล่อง "ค่าเดิม → ใหม่" ของ object เดียว — ซ่อนไว้ก่อน แสดงเมื่อกดปุ่มในไดอะแกรม */
+        function detailModal() {
+            return '<div id="tbdll-detail" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(17,24,39,.45);align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto">'
+                + '<div style="background:#fff;border-radius:12px;max-width:1100px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.25)">'
+                + '<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #e5e7eb">'
+                + '<b id="tbdll-detail-title" style="flex:1">รายละเอียด</b>'
+                + '<button id="tbdll-detail-close" type="button" style="border:1px solid #d1d5db;background:#fff;border-radius:6px;padding:4px 12px;cursor:pointer">ปิด</button>'
+                + '</div><div id="tbdll-detail-body" style="padding:0 16px 16px"></div></div></div>';
         }
 
         const REPORT_JS = [
@@ -165,7 +176,14 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
             '  root.querySelectorAll("input[data-filter-for]").forEach(function(inp){inp.addEventListener("keydown",function(e){if(e.key==="Enter")e.preventDefault();});inp.addEventListener("input",function(){var q=inp.value.trim().toLowerCase(),tb=document.getElementById(inp.getAttribute("data-filter-for"));',
             '    if(!tb)return;tb.querySelectorAll("tbody tr").forEach(function(tr){tr.style.display=!q||tr.textContent.toLowerCase().indexOf(q)>=0?"":"none";});});});',
             '  var gq=root.querySelector("#tbdll-gq");if(gq){gq.addEventListener("keydown",function(e){if(e.key==="Enter")e.preventDefault();});gq.addEventListener("input",function(){var q=gq.value.trim().toLowerCase(),n=0;',
-            '    root.querySelectorAll(".tbg").forEach(function(r){var ok=!q||r.getAttribute("data-q").indexOf(q)>=0;r.style.display=ok?"":"none";if(ok)n++;});var c=root.querySelector("#tbdll-gc");if(c)c.textContent=n+" กลุ่ม";});}}',
+            '    root.querySelectorAll(".tbg").forEach(function(r){var ok=!q||r.getAttribute("data-q").indexOf(q)>=0;r.style.display=ok?"":"none";if(ok)n++;});var c=root.querySelector("#tbdll-gc");if(c)c.textContent=n+" กลุ่ม";});}',
+            '  root.querySelectorAll("[data-obj]").forEach(function(b){b.addEventListener("click",function(e){',
+            '    if(e)e.preventDefault();var p=String(b.getAttribute("data-obj")).split("|"),box=$("tbdll-detail"),body=$("tbdll-detail-body"),ttl=$("tbdll-detail-title");if(!box||!body)return;',
+            '    box.style.display="flex";if(ttl)ttl.textContent=(p[0]||"")+" #"+(p[1]||"");body.innerHTML="<div style=\\"padding:16px;color:#6b7280\\">กำลังดึงค่าเดิม → ใหม่…</div>";',
+            '    getJSON(B.ajaxUrl+"&ajax=detail&type="+encodeURIComponent(p[0])+"&id="+encodeURIComponent(p[1])+"&from="+B.from+"&to="+B.to)',
+            '      .then(function(j){if(!j.ok)throw new Error(j.error||"error");body.innerHTML=j.html;bind(body);})',
+            '      .catch(function(e2){body.innerHTML="<div style=\\"padding:16px;color:#dc2626\\">"+esc(e2.message)+"</div>";});',
+            '  });});}',
             'function dl(id,name,text){var a=$(id);if(!a)return;a.href=URL.createObjectURL(new Blob([text],{type:"text/csv;charset=utf-8"}));a.download=name;a.style.opacity="";a.style.pointerEvents="";}',
             'function render(partial){clearInterval(tick);cur="";status("ดึงครบแล้ว "+changes.length+" การเปลี่ยนแปลง · กำลังสรุปผล…",95);',
             '  getJSON(B.ajaxUrl+"&ajax=render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({from:B.from,to:B.to,noteRows:noteRows,ms:Date.now()-t0,changes:changes})})',
@@ -174,14 +192,26 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
             '    var msg=(partial?"<b>ข้อมูลไม่ครบ</b> หยุดที่ "+partial+" · ":"เสร็จ · ")+B.days.length+" วัน · "+changes.length+" การเปลี่ยนแปลง · System Notes "+noteRows.toLocaleString()+" แถว · "+sec()+" วิ";',
             '    if(failed.length)msg+=" · <b style=\\"color:#dc2626\\">ดึงไม่สำเร็จ "+failed.length+" วัน: "+failed.join(", ")+"</b>";status(msg,100);})',
             '  .catch(function(e){status("สรุปผลไม่สำเร็จ: "+esc(e.message),100);});}',
-            'var i=0;',
-            'function next(){if(stop){render(B.days[i]||"");return;}if(i>=B.days.length){render("");return;}',
-            '  var d=B.days[i];cur="กำลังดึงวันที่ <b>"+d+"</b> ("+(i+1)+"/"+B.days.length+") · พบแล้ว "+changes.length+" การเปลี่ยนแปลง";waitFrom=Date.now();status(cur+" · รวม "+sec()+" วิ",i/B.days.length*90);',
-            '  var tries=0;(function go(){getJSON(B.ajaxUrl+"&ajax=day&day="+d).then(function(j){if(!j.ok)throw new Error(j.error||"error");',
-            '    Array.prototype.push.apply(changes,j.changes);noteRows+=j.noteRows||0;logl(d+": "+j.changes.length+" การเปลี่ยนแปลง, "+(j.ms/1000).toFixed(1)+" วิ");i++;next();})',
-            '    .catch(function(e){if(++tries<3){logl(d+": ลองใหม่ ("+esc(e.message)+")");go();}else{failed.push(d);logl("<b>"+d+": ข้าม</b> "+esc(e.message));i++;next();}});})();}',
-            '$("tbdll-stop").addEventListener("click",function(){stop=true;});',
-            'next();',
+            'var i=0,active=0,finished=0,CONC=Math.max(1,Math.min(6,Number(B.conc)||3));',
+            'function progress(){status("ดึงแล้ว "+finished+"/"+B.days.length+" วัน · กำลังดึง "+active+" · พบแล้ว "+changes.length+" การเปลี่ยนแปลง · รวม "+sec()+" วิ",B.days.length?finished/B.days.length*90:0);}',
+            'function fetchDay(d){var tries=0;(function go(){',
+            '  cur="วันที่ <b>"+d+"</b>";waitFrom=Date.now();',
+            '  getJSON(B.ajaxUrl+"&ajax=day&day="+d).then(function(j){if(!j.ok)throw new Error(j.error||"error");',
+            '    Array.prototype.push.apply(changes,j.changes);noteRows+=j.noteRows||0;logl(d+": "+j.changes.length+" การเปลี่ยนแปลง, "+(j.ms/1000).toFixed(1)+" วิ");',
+            '    finished++;active--;progress();pump();})',
+            '  .catch(function(e){if(++tries<3){logl(d+": ลองใหม่ ("+esc(e.message)+")");go();}',
+            '    else{failed.push(d);logl("<b>"+d+": ข้าม</b> "+esc(e.message));finished++;active--;progress();pump();}});})();}',
+            'function pump(){',
+            '  if(stop){if(active===0){clearInterval(tick);render(doneAll()?"":B.days[Math.max(0,finished-1)]||"");}return;}',
+            '  while(active<CONC&&i<B.days.length){var d=B.days[i++];active++;fetchDay(d);}',
+            '  progress();',
+            '  if(i>=B.days.length&&active===0){clearInterval(tick);render("");}',
+            '}',
+            'function doneAll(){return finished>=B.days.length;}',
+            '$("tbdll-stop").addEventListener("click",function(){stop=true;status("กำลังหยุด… รอคำขอที่ค้างอยู่ให้จบ",Math.min(95,finished/B.days.length*90));if(active===0)pump();});',
+            '$("tbdll-detail-close").addEventListener("click",function(){$("tbdll-detail").style.display="none";});',
+            'document.addEventListener("keydown",function(e){if(e.key==="Escape"){var b=$("tbdll-detail");if(b)b.style.display="none";}});',
+            'pump();',
             '})();'
         ].join('\n');
 
@@ -213,6 +243,8 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
                 + '.tbg-node .lb{font-weight:600;word-break:break-word}'
                 + '.tbg-node .x{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:600}'
                 + '.tbg-node .sm{flex-basis:100%;font-size:12px;color:#6b7280}'
+                + '.tbdll-d{border:1px solid #c7d2fe;background:#eef2ff;color:#3730a3;font-size:11px;border-radius:6px;padding:2px 8px;cursor:pointer;white-space:nowrap}'
+                + '.tbdll-d:hover{background:#e0e7ff}'
                 + '.tbg-bar{display:flex;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line,#eceef2)}'
                 + '.tbg-bar input{flex:1;max-width:360px;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px}'
                 + '@media(max-width:720px){.tbg{grid-template-columns:1fr;gap:12px}}'
@@ -224,6 +256,7 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
                     return '<div class="tbg-node"><span class="tbg-chip" style="color:' + kd.c + ';background:' + kd.bg + '">' + esc(kd.t) + '</span>'
                         + '<span class="lb">' + esc(n.label) + '</span>' + (n.sub ? '<span style="color:#6b7280;font-size:12px">' + esc(n.sub) + '</span>' : '')
                         + '<span class="x">× ' + n.count + '</span>'
+                        + (n.objId ? '<button type="button" class="tbdll-d" data-obj="' + esc(n.objType) + '|' + esc(n.objId) + '">ดูค่าเดิม → ใหม่</button>' : '')
                         + '<span class="sm">' + esc(n.editors.join(', ')) + ' · ' + esc(range(n.firstText, n.lastText)) + '</span></div>';
                 }).join('');
                 const search = [g.scriptid, g.name, g.type, g.deployedOn.join(' '), g.editors.join(' '), g.children.map(n => n.label).join(' ')].join(' ').toLowerCase();
@@ -416,6 +449,50 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
             }
         }
 
+        /** ค่าเดิม → ใหม่ ของ object เดียว (ปุ่มในไดอะแกรม) — query ทีละ recordid ซึ่งเร็ว */
+        function detailAjax(ctx, ui, p) {
+            try {
+                const type = String(p.type || '');
+                const id = String(p.id || '');
+                const from = String(p.from || ''), to = String(p.to || '');
+                if (!/^\d+$/.test(id)) throw new Error('id ต้องเป็นตัวเลข');
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) throw new Error('from/to ต้องเป็น YYYY-MM-DD');
+                const t = Date.now();
+                const d = L.objectDetail(type, id, from, to);
+                L.log('detail', type + ' #' + id + ' ' + from + '..' + to + ' · ' + d.rows.length + ' แถว · ' + (Date.now() - t) + ' ms');
+                return json(ctx, { ok: true, html: detailTable(ui, type, id, d), count: d.rows.length, ms: Date.now() - t });
+            } catch (e) {
+                L.log('detail ajax', e.message);
+                return json(ctx, { ok: false, error: e.message });
+            }
+        }
+
+        /** ตารางค่าเดิม → ใหม่ ของ object เดียว */
+        function detailTable(ui, type, id, d) {
+            const rows = d.rows.map(r => ({
+                when: r.tsText,
+                who: r.actorName + (r.roleName ? ' (' + r.roleName + ')' : ''),
+                field: r.field,
+                oldv: r.oldValue,
+                newv: r.newValue,
+                ctx: r.context
+            }));
+            return ui.table({
+                note: type + ' #' + id + ' · ' + d.rows.length + ' แถว' + (d.truncated ? ' · แสดง 800 แถวแรก' : ''),
+                emptyTitle: 'ไม่มีรายละเอียด',
+                emptyText: 'ไม่พบ System Note ของ object นี้ในช่วงวันที่เลือก',
+                columns: [
+                    { key: 'when', label: 'เวลา', type: 'date' },
+                    { key: 'who', label: 'ผู้แก้' },
+                    { key: 'field', label: 'Field', type: 'wrap' },
+                    { key: 'oldv', label: 'ค่าเดิม', type: 'wrap' },
+                    { key: 'newv', label: 'ค่าใหม่', type: 'wrap' },
+                    { key: 'ctx', label: 'Context' }
+                ],
+                rows
+            });
+        }
+
         /** รับรายการที่ browser ดึงครบแล้ว (POST JSON) → วาด KPI/ไดอะแกรม/ตาราง + CSV สองแบบ */
         function renderAjax(ctx, ui) {
             try {
@@ -456,6 +533,7 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
                     return page(ctx, buildProbe(ui, per, view, pf));
                 }
                 if (p.ajax === 'day') return dayAjax(ctx, p);
+                if (p.ajax === 'detail') return detailAjax(ctx, ui, p);
                 if (p.ajax === 'render') return renderAjax(ctx, ui);
                 return page(ctx, buildShell(ui, per, view));
             } catch (e) {

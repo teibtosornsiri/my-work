@@ -236,6 +236,55 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
         }));
     }
 
+    /**
+     * ค่าเดิม → ใหม่ ของ object เดียว (ปุ่ม "ดูรายละเอียด") — query ทีละ recordid ซึ่งเร็ว
+     * ใช้เมื่อรายงานหลักดึงแบบรวม (ไม่มีค่าเดิม/ใหม่) แล้วผู้ตรวจอยากเห็นรายละเอียดของ object นั้น
+     * คืน { rows: [{tsText, actorName, roleName, field, oldValue, newValue, context}], truncated }
+     */
+    function objectDetail(objType, objId, fromYmd, toYmd) {
+        const rid = Number(objId);
+        if (!Number.isFinite(rid)) throw new Error('object id ไม่ถูกต้อง');
+        const type = String(objType || '');
+        const rt = rectypes();
+        const rtIds = [];
+        const val = CFG.RECTYPE_MAP ? CFG.RECTYPE_MAP[type] : null;
+        [].concat(val === null || val === undefined || val === false ? [] : val).forEach(x => {
+            if (x && typeof x === 'object') { if (Number.isFinite(Number(x.rt))) rtIds.push(Number(x.rt)); }
+            else if (Number.isFinite(Number(x))) rtIds.push(Number(x));
+        });
+        let filePrefix = '';
+        rt.nullRules.forEach(r => { if (r.type === type) filePrefix = r.prefix; });
+        const conds = [];
+        if (rtIds.length) conds.push('sn.recordtypeid IN (' + rtIds.join(',') + ')');
+        if (filePrefix) conds.push("(sn.recordtypeid IS NULL AND UPPER(sn.field) LIKE '" + filePrefix.replace(/'/g, "''") + "%')");
+        const MAX = 800;
+        const sql = 'SELECT sn.id, sn.field, sn.context, sn.oldvalue, sn.newvalue, sn.name AS actor, sn.role, ' +
+            "TO_CHAR(sn.date, 'YYYY-MM-DD HH24:MI:SS') AS ts FROM systemnote sn " +
+            "WHERE sn.date >= TO_DATE(?, 'YYYY-MM-DD') AND sn.date < TO_DATE(?, 'YYYY-MM-DD') + 1 AND sn.recordid = ?" +
+            (conds.length ? ' AND (' + conds.join(' OR ') + ')' : '') +
+            ' ORDER BY sn.date, sn.id FETCH FIRST ' + (MAX + 1) + ' ROWS ONLY';
+        const raw = tbdllQuery.runSuiteQL({ query: sql, params: [fromYmd, toYmd, rid] }).asMappedResults();
+        const rows = raw.slice(0, MAX).map(r => ({
+            ts: parseTs(r.ts),
+            actor: r.actor === null || r.actor === undefined ? '' : String(r.actor),
+            actorName: r.actor ? '#' + r.actor : '',
+            role: r.role === null || r.role === undefined ? '' : String(r.role),
+            roleName: '',
+            field: r.field || '',
+            oldValue: r.oldvalue === null || r.oldvalue === undefined ? '' : String(r.oldvalue),
+            newValue: r.newvalue === null || r.newvalue === undefined ? '' : String(r.newvalue),
+            context: r.context || ''
+        }));
+        attachActorNames(rows);
+        const roleNames = {};
+        const roleIds = ids(rows.map(r => r.role).filter((x, i, a) => x && a.indexOf(x) === i));
+        chunk(roleIds, 200).forEach(part => {
+            try { tbdllQuery.runSuiteQL({ query: 'SELECT id, name FROM role WHERE id IN (' + part.join(',') + ')' }).asMappedResults().forEach(x => { roleNames[String(x.id)] = x.name; }); } catch (e) { /* ไม่มีชื่อ role ก็ได้ */ }
+        });
+        rows.forEach(r => { r.tsText = fmtTs(r.ts); r.roleName = roleNames[String(r.role)] || r.roleName || ''; });
+        return { rows, truncated: raw.length > MAX };
+    }
+
     /** รวมแถวที่เป็นการ save ครั้งเดียวกัน (object + ผู้แก้ + นาทีเดียวกัน) */
     function groupChanges(notes) {
         const map = {}, out = [];
@@ -288,6 +337,75 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
     const RECORD_BOUND = ['User Event', 'Client Script', 'Workflow Action'];
 
     /**
+     * record type มาตรฐาน → ชื่อที่ผู้ตรวจอ่านรู้เรื่อง (ไม่ต้อง query)
+     * ค่าที่ scriptdeployment.recordtype เก็บเป็น script id ตัวพิมพ์ใหญ่ เช่น JOURNALENTRY
+     */
+    const STD_RT = {
+        JOURNALENTRY: 'Journal Entry', JOURNAL: 'Journal Entry', INVOICE: 'Invoice', VENDORBILL: 'Vendor Bill',
+        SALESORDER: 'Sales Order', PURCHASEORDER: 'Purchase Order', CUSTOMERPAYMENT: 'Customer Payment',
+        VENDORPAYMENT: 'Vendor Payment', CREDITMEMO: 'Credit Memo', VENDORCREDIT: 'Vendor Credit',
+        CASHREFUND: 'Cash Refund', CASH_SALE: 'Cash Sale', ESTIMATE: 'Estimate', OPPORTUNITY: 'Opportunity',
+        ITEMFULFILLMENT: 'Item Fulfillment', ITEMRECEIPT: 'Item Receipt', INVENTORYADJUSTMENT: 'Inventory Adjustment',
+        INVENTORYTRANSFER: 'Inventory Transfer', TRANSFERORDER: 'Transfer Order', WORKORDER: 'Work Order',
+        ASSEMBLYBUILD: 'Assembly Build', BILLPAYMENT: 'Bill Payment', DEPOSIT: 'Deposit', CHECK: 'Check',
+        INVENTORYCOUNT: 'Inventory Count', CUSTOMER: 'Customer', VENDOR: 'Vendor', EMPLOYEE: 'Employee',
+        CONTACT: 'Contact', PARTNER: 'Partner', ITEM: 'Item', INVENTORYITEM: 'Inventory Item',
+        ASSEMBLYITEM: 'Assembly/Bill of Materials', NONINVENTORYITEM: 'Non-inventory Item',
+        SERVICEITEM: 'Service Item', OTHERCHARGEITEM: 'Other Charge Item', KITITEM: 'Group/Kit Item',
+        BOM: 'Bill of Materials', BOMREVISION: 'BOM Revision', SUBSIDIARY: 'Subsidiary', DEPARTMENT: 'Department',
+        CLASSIFICATION: 'Class', LOCATION: 'Location', CURRENCY: 'Currency', ACCOUNT: 'Account',
+        TAXCODE: 'Tax Code', TAXITEM: 'Tax Item', TASK: 'Task', CALENDAREVENT: 'Calendar Event',
+        PHONE_CALL: 'Phone Call', SUPPORT_CASE: 'Case', ISSUE: 'Issue', SOLUTION: 'Solution',
+        MESSAGE: 'Message', ENTITYGROUP: 'Group', CAMPAIGN: 'Campaign', PRICELEVEL: 'Price Level',
+        REVENUEELEMENT: 'Revenue Element', REVENUEARRANGEMENT: 'Revenue Arrangement', REVENUEPLAN: 'Revenue Plan',
+        CUSTOMTRANSACTION: 'Custom Transaction'
+    };
+
+    /** แคชชื่อ record type ที่ query มาแล้ว: 'CUSTOMRECORD_X' → 'TWMS - Inventory Counting Plan' */
+    const tbdllRtNames = {};
+
+    /** query ชื่อ custom record / custom list จาก script id (ทำครั้งเดียวต่อคำขอ) */
+    function fetchRecordTypeNames(list) {
+        const want = [];
+        (list || []).forEach(x => {
+            const k = String(x || '').toUpperCase();
+            if (k && tbdllRtNames[k] === undefined && want.indexOf(k) < 0) want.push(k);
+        });
+        if (!want.length) return;
+        want.forEach(k => { tbdllRtNames[k] = ''; });          // กัน query ซ้ำเมื่อเรียกอีกครั้ง
+        const ask = (table, keys) => {
+            if (!keys.length) return;
+            chunk(keys, 200).forEach(part => {
+                const inList = part.map(k => "'" + k.replace(/'/g, "''") + "'").join(',');
+                try {
+                    runAll('SELECT scriptid, name FROM ' + table + ' WHERE UPPER(scriptid) IN (' + inList + ')')
+                        .forEach(r => {
+                            const key = String(r.scriptid || '').toUpperCase();
+                            if (key) tbdllRtNames[key] = r.name || '';
+                        });
+                } catch (e) { tbdllLog('recordTypeNames ' + table + ' failed', e.message); }
+            });
+        };
+        ask('customrecordtype', want.filter(k => k.indexOf('CUSTOMRECORD_') === 0));
+        ask('customlist', want.filter(k => k.indexOf('CUSTOMLIST_') === 0));
+    }
+
+    /**
+     * script id ของ record type → ชื่อที่ผู้ตรวจอ่านรู้เรื่อง
+     *   JOURNALENTRY → 'Journal Entry' · CUSTOMRECORD_TWMS_X → ชื่อจาก customrecordtype · ไม่รู้จัก → แปลง _ เป็นช่องว่าง
+     */
+    function recordTypeName(id) {
+        const key = String(id || '').toUpperCase().trim();
+        if (!key) return '';
+        if (STD_RT[key]) return STD_RT[key];
+        if (tbdllRtNames[key]) return tbdllRtNames[key];
+        const m = key.match(/^CUSTOM(?:RECORD|LIST|TRANSACTION)_(.+)$/);
+        const base = m ? m[1] : key;
+        return base.toLowerCase().replace(/_+/g, ' ').replace(/\b[a-z]/g, ch => ch.toUpperCase()).trim();
+    }
+
+
+    /**
      * ข้อมูล script ของแต่ละการเปลี่ยนแปลง (Script ID, ชื่อ, ประเภท, deploy บน record ไหน)
      *   File              → script ที่ใช้ไฟล์นี้เป็น Script File
      *   Script            → script ตัวนั้น
@@ -338,7 +456,16 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
             }));
         }
 
-        const fmt = s => [s.scriptid, s.name, s.type].filter(Boolean).join(' · ') + (s.deployedOn.length ? ' · deploy บน ' + s.deployedOn.join(', ') : '');
+        const fillRtNames = list => {
+            const all = [];
+            list.forEach(s => (s.deployedOn || []).forEach(r => all.push(r)));
+            fetchRecordTypeNames(all);
+            list.forEach(s => { s.deployedOnText = (s.deployedOn || []).map(recordTypeName); });
+        };
+        fillRtNames(Object.keys(scripts).map(k => scripts[k]));
+
+        const fmt = s => [s.scriptid, s.name, s.type].filter(Boolean).join(' · ') +
+            (s.deployedOnText && s.deployedOnText.length ? ' · deploy บน ' + s.deployedOnText.join(', ') : '');
         changes.forEach(c => {
             let list = [];
             if (c.objType === 'File') list = byFile[c.objId] || [];
@@ -348,7 +475,10 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
                 if (d) {
                     c.objName = (d.title || d.scriptid || c.objName) + (d.scriptid && d.title ? ' (' + d.scriptid + ')' : '');
                     const s = scripts[String(d.script)];
-                    if (s) list = [Object.assign({}, s, { deployedOn: d.recordtype ? [String(d.recordtype)] : [] })];
+                    if (s) list = [Object.assign({}, s, {
+                        deployedOn: d.recordtype ? [String(d.recordtype)] : [],
+                        deployedOnText: d.recordtype ? [recordTypeName(d.recordtype)] : []
+                    })];
                 }
             }
             c.scripts = list;
@@ -559,7 +689,7 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
             if (c.actorName && o.editors.indexOf(c.actorName) < 0) o.editors.push(c.actorName);
             if (c.ts !== null && c.ts !== undefined) { o.first = o.first === null ? c.ts : Math.min(o.first, c.ts); o.last = o.last === null ? c.ts : Math.max(o.last, c.ts); }
         };
-        const newNode = (kind, label, sub) => ({ kind, label, sub: sub || '', count: 0, editors: [], first: null, last: null });
+        const newNode = (kind, label, sub, objType, objId) => ({ kind, label, sub: sub || '', objType: objType || '', objId: objId || '', count: 0, editors: [], first: null, last: null });
         const group = (key, info) => groups[key] || (groups[key] = Object.assign({ key, children: {}, editors: [], count: 0, first: null, last: null, deployedOn: [] }, info));
         const addDeployedOn = (g, list) => (list || []).forEach(r => { if (g.deployedOn.indexOf(r) < 0) g.deployedOn.push(r); });
 
@@ -569,7 +699,7 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
             if (scripts.length) {
                 targets = scripts.map(s => {
                     const g = group('s:' + s.id, { kind: 'script', scriptId: s.id, scriptid: s.scriptid, name: s.name, type: s.type });
-                    addDeployedOn(g, s.deployedOn);
+                    addDeployedOn(g, s.deployedOnText || s.deployedOn);
                     return g;
                 });
             } else if (c.objType === 'File') {
@@ -579,9 +709,10 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
             }
             const nodeKey = c.objType + '|' + c.objId;
             const label = c.objType === 'Script' ? 'Script record' : c.objType === 'Script Deployment' ? 'Deployment: ' + c.objName : c.objName;
-            const sub = c.objType === 'Script Deployment' && scripts[0] && scripts[0].deployedOn && scripts[0].deployedOn.length ? 'บน ' + scripts[0].deployedOn.join(', ') : c.objType === 'File' ? 'File #' + c.objId : '';
+            const depOn = scripts[0] ? (scripts[0].deployedOnText || scripts[0].deployedOn || []) : [];
+            const sub = c.objType === 'Script Deployment' && depOn.length ? 'บน ' + depOn.join(', ') : c.objType === 'File' ? 'File #' + c.objId : '';
             targets.forEach(g => {
-                const n = g.children[nodeKey] || (g.children[nodeKey] = newNode(c.objType, label, sub));
+                const n = g.children[nodeKey] || (g.children[nodeKey] = newNode(c.objType, label, sub, c.objType, c.objId));
                 touch(n, c);
                 touch(g, c);
             });
@@ -606,13 +737,19 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
         return '﻿' + lines.join('\r\n');
     }
 
+    /** เรียงตามเวลา — browser ดึงหลายวันพร้อมกัน รายการจึงมาถึงไม่เรียงลำดับ */
+    function sortByTs(changes) {
+        return (changes || []).slice().sort((a, b) => (a.ts || 0) - (b.ts || 0));
+    }
+
     /** สรุปผลจากรายการที่ดึงแล้ว (ใช้ตอน browser ส่งรายการครบทุกวันมาให้วาด) */
     function finish(changes, meta) {
-        const res = summarize(changes, CFG.FLAG_UNAUTHORIZED === false ? {} : deployerSet());
+        const list = sortByTs(changes);
+        const res = summarize(list, CFG.FLAG_UNAUTHORIZED === false ? {} : deployerSet());
         res.noteRows = (meta && meta.noteRows) || 0;
         res.ms = (meta && meta.ms) || 0;
-        res.actors = Object.keys(changes.reduce((m, c) => (m[c.actor] = 1, m), {})).length;
-        res.groups = groupByScript(changes);
+        res.actors = Object.keys(list.reduce((m, c) => (m[c.actor] = 1, m), {})).length;
+        res.groups = groupByScript(list);
         res.scripts = res.groups.filter(g => g.kind === 'script').length;
         return res;
     }
@@ -621,7 +758,7 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
         const t0 = Date.now();
         const notes = fetchSystemNotes(fromYmd, toYmd);
         const t1 = Date.now();
-        const changes = attachScriptInfo(attachActorNames(attachObjectNames(applyFileScope(groupChanges(notes)))));
+        const changes = sortByTs(attachScriptInfo(attachActorNames(attachObjectNames(applyFileScope(groupChanges(notes))))));
         const res = summarize(changes, CFG.FLAG_UNAUTHORIZED === false ? {} : deployerSet());
         res.noteRows = notes.reduce((n, x) => n + (x.cnt === undefined ? 1 : x.cnt), 0);
         res.ms = Date.now() - t0;
@@ -650,6 +787,7 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
         CFG, runAll, chunk, ids, parseTs, fmtTs, ymd,
         rectypes, rectypeWhere, typeOfNote, configWarnings, employeesWithRoles, deployerSet,
         fetchSystemNotes, groupChanges, attachObjectNames, attachActorNames, attachScriptInfo, probeRecordTypes, recordTypeLabel, daysBetween,
+        recordTypeName, fetchRecordTypeNames, objectDetail, sortByTs,
         suiteScriptFolderIds, fileIdsInScope, applyFileScope, autoDetectFileRectype,
         summarize, run, finish, toCsv, groupByScript, toGroupCsv,
         log: tbdllLog

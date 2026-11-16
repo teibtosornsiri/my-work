@@ -60,6 +60,12 @@ define([], () => ({
     /** internal id ของโฟลเดอร์ SuiteScripts (มาตรฐาน NetSuite = -15) */
     SUITESCRIPTS_FOLDER_ID: -15,
 
+    /**
+     * จำนวนวันที่ browser ดึงพร้อมกัน (1 = ทีละวันแบบเดิม)
+     * 3 = ทั้งเดือนเร็วขึ้นราว 2–3 เท่า แต่มีคำขอ Suitelet พร้อมกันมากขึ้น · สูงสุดที่ 6
+     */
+    LOAD_CONCURRENCY: 3,
+
     /** context ของ System Note ที่ไม่นับ (เช่น การแก้โดย script ของระบบเอง) — ว่าง = นับทั้งหมด */
     EXCLUDE_CONTEXTS: [],
 
