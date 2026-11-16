@@ -1,0 +1,62 @@
+# Deployment Change Log (Lite)
+
+เวอร์ชันย่อของ [`deployment-change-log/`](../deployment-change-log/): **ไม่มี custom record หรือ custom list** มีแค่รายงานการเปลี่ยนแปลงใน PROD จาก System Notes ส่วน CR และการอนุมัติเก็บนอก NetSuite (Jira, Excel หรืออีเมล) แล้วกระทบยอดใน Excel ที่ export จากรายงาน
+
+สถานะ: เขียนเสร็จ ผ่าน `node --check` และ unit test ของ `summarize()` / `toCsv()` **ยังไม่ได้รันใน NetSuite จริง**
+
+## เทียบกับเวอร์ชันเต็ม
+
+| | Lite | เต็ม |
+| --- | --- | --- |
+| Custom record / list | ไม่มี | 4 record + 6 list |
+| Script record | 1–2 ตัว | 5 ตัว |
+| บังคับอนุมัติก่อน deploy ในระบบ | ไม่มี (ตรวจย้อนหลังอย่างเดียว) | มี (ปุ่ม + SoD + stamp เวลา) |
+| จับคู่กับ CR | คนกรอกเลข CR ใน Excel | อัตโนมัติ (E1–E6) |
+| ติดธงผู้แก้ไม่มีสิทธิ์ deploy | มี | มี (E3) |
+| ตรวจ SHA-1 ไฟล์ | ไม่มี | มี (E4) |
+| อธิบาย exception + sign-off | ใน Excel ที่เซ็นแล้ว | ในระบบ |
+
+## ไฟล์
+
+| ไฟล์ | ประเภท | Script ID | Deployment ID |
+| --- | --- | --- | --- |
+| `TB_DLL_Config.js` | Module (ค่าตั้งต่อบัญชี) | — | — |
+| `TB_DLL_Lib.js` | Module | — | — |
+| `Lib_Report_UI.js` | Module จาก [`../report-ci/`](../report-ci/) | — | — |
+| `TB_DLL_SL_Report.js` | Suitelet | `customscript_tbdll_sl_report` | `customdeploy_tbdll_sl_report` |
+| `TB_DLL_SS_MonthlySnapshot.js` | Scheduled (ไม่ใส่ก็ได้) | `customscript_tbdll_ss_snapshot` | `customdeploy_tbdll_ss_snapshot` |
+
+ใช้ prefix `tbdll` ต่างจากเวอร์ชันเต็ม (`tbdl`) จึงลงคู่กันในบัญชีเดียวได้
+
+## ขั้นติดตั้ง
+
+1. อัป 5 ไฟล์ไว้โฟลเดอร์เดียว เช่น `SuiteScripts/TB_DeployLogLite/`
+2. สร้าง Script record + Deployment
+    - **Suitelet:** Status Released · Audience: IT, ผู้ review · ใส่ลิงก์ในเมนู · Execute as Role: Administrator (ต้องอ่าน `systemnote` และรายชื่อ role ได้)
+    - **Scheduled:** Monthly วันที่ 1 เวลา 02:00 · parameter `custscript_tbdll_ss_period` (Free-Form Text, ไม่บังคับ ใช้ทดสอบเดือนอื่นด้วยค่า `YYYY-MM`)
+    - Script ID และ Deployment ID ของ Suitelet ต้องตรงกับ `SL_REPORT` ใน Config (ใช้ทำลิงก์ในอีเมล)
+3. ตั้ง `TB_DLL_Config.js`: `DEPLOYER_ROLE_IDS` / `DEPLOYER_EMPLOYEE_IDS`, `REVIEWER_EMPLOYEE_IDS`, `EMAIL_AUTHOR_ID`, `SNAPSHOT_FOLDER_ID`
+4. **หา `recordtypeid` ด้วย Probe**
+    1. แก้ object ที่รู้จักทีละประเภท (อัปไฟล์ทับ 1 ไฟล์, แก้ description ของ script, แก้ label ของ custom field, แก้ role)
+    2. เปิด Suitelet ต่อท้าย `&view=probe` เลือกวันนั้น
+    3. แถวที่ `recordid ตัวอย่าง` ตรงกับ internal id ของ object ที่เพิ่งแก้ → ใส่ `recordtypeid` ลง `RECTYPE_MAP`
+    4. ประเภทที่ไม่โผล่ = SuiteQL มองไม่เห็น ต้องใช้ Saved Search บน record นั้นเสริม
+5. ทดสอบ: แก้ไฟล์ด้วย user ที่ไม่อยู่ในรายชื่อผู้มีสิทธิ์ deploy → รายงานต้องติดธง
+
+## Process รายเดือน
+
+1. วันที่ 1: Scheduled ส่งอีเมลพร้อม CSV ของเดือนก่อน (หรือกด Export CSV เอง)
+2. ภายในวันที่ 5: ทีม NetSuite กรอก `CR No.` ทุกแถว แถวที่ไม่มี CR หรือติดธงให้เขียน `คำอธิบาย`
+3. ภายในวันที่ 10: ผู้ review ตรวจแท็บ "ผู้ถือสิทธิ์สูง" และไฟล์ที่กรอกแล้ว เซ็นชื่อ/วันที่ เก็บไฟล์เป็น evidence
+
+## ข้อจำกัด
+
+- ยังไม่ยืนยันว่ามีตาราง `systemnote` ใน SuiteQL ของทุกบัญชี และเห็น object ตั้งค่าครบทุกประเภท ต้องผ่านขั้นที่ 4 ก่อน
+- ไม่มีหลักฐานการอนุมัติในระบบ ผู้สอบบัญชีจะดูจาก log CR ภายนอกประกอบ
+- การ save ครั้งเดียวที่แก้หลาย field ถูกรวมเป็น 1 แถว (object + ผู้แก้ + นาทีเดียวกัน) ค่าเดิม → ใหม่แสดงตัวอย่างไม่เกิน 5 field
+
+## ดู log
+
+```sql
+SELECT title, detail, TO_CHAR(date,'YYYY-MM-DD HH24:MI:SS') AS tm FROM scriptnote WHERE title LIKE 'TBDLL %' ORDER BY internalid DESC FETCH FIRST 30 ROWS ONLY
+```
