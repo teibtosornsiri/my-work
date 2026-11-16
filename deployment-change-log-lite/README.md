@@ -38,6 +38,7 @@
 3. ตั้ง `TB_DLL_Config.js`: `DEPLOYER_ROLE_IDS` / `DEPLOYER_EMPLOYEE_IDS`, `FILE_SCOPE` (`suitescripts` ค่าเริ่มต้น = เฉพาะไฟล์ใต้ SuiteScripts · `scriptfile` = เฉพาะ Script File ของ Script record · `all`) และถ้าใช้ Scheduled: `REVIEWER_EMPLOYEE_IDS`, `EMAIL_AUTHOR_ID`, `SNAPSHOT_FOLDER_ID`
     - อยากดูแค่ script กับไฟล์ของ script: map ใน `RECTYPE_MAP` แค่ Script, Script Deployment, File แล้วปล่อยที่เหลือเป็น `null`
     - `LOAD_CONCURRENCY` (ค่าเริ่มต้น 3) = จำนวนวันที่ browser ดึงพร้อมกัน · `1` = ทีละวัน (เบาที่สุด ช้าที่สุด)
+    - `RECORD_TYPE_NAMES` = ตั้งชื่อ record type เองเมื่อระบบแปลงไม่ได้ (ดูชื่อจริงจากช่อง APPLIES TO ของ deployment) — record ของ SuiteApp มักไม่อยู่ในตาราง `customrecordtype`
 4. **หา `recordtypeid` ด้วย Probe** (เปิด Suitelet ต่อท้าย `&view=probe`)
     - **File:** กด "ตรวจหา File อัตโนมัติ" ระบบดูไฟล์ใต้ SuiteScripts ที่แก้ล่าสุด 5 ไฟล์ แล้วบอกค่าที่แนะนำ
     - **ประเภทอื่น:** แก้ object นั้นด้วย user ตัวเอง (เช่น แก้ description ของ script) → เลือกวันนั้น + ใส่ Internal ID ของ object (เร็วสุด) → กด "เริ่มสแกน" → แถวที่ recordid ตรง = ค่าของประเภทนั้น

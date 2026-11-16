@@ -23,6 +23,10 @@ define([], () => ({
     CODE_FILE_EXTENSIONS: ['js', 'html', 'htm', 'xml', 'css', 'scss', 'ftl', 'ts'],
     SUITESCRIPTS_FOLDER_ID: -15,
     LOAD_CONCURRENCY: 3,
+    RECORD_TYPE_NAMES: {
+        'AMS_LEASERECOGNIZE': 'AMS Lease Recognize',
+        'AMS_WRITEOFF': 'AMS Write-Off'
+    },
     EXCLUDE_CONTEXTS: [],
     REVIEWER_EMPLOYEE_IDS: [],
     EMAIL_AUTHOR_ID: null,

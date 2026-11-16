@@ -57,6 +57,15 @@ define([], () => ({
      */
     CODE_FILE_EXTENSIONS: ['js', 'html', 'htm', 'xml', 'css', 'scss', 'ftl', 'ts'],
 
+    /**
+     * ตั้งชื่อ record type เอง สำหรับประเภทที่ระบบแปลงอัตโนมัติไม่ได้
+     * (record ของ SuiteApp/bundle ที่ไม่มีในตาราง customrecordtype → จะออกมาเป็นคำติดกัน เช่น "Ams Writeoff")
+     * วิธีหาชื่อจริง: เปิด deployment ที่ deploy บน record นั้น → ช่อง APPLIES TO
+     *   'AMS_WRITEOFF': 'AMS Write-Off',
+     *   'CUSTOMRECORD_X': 'ชื่อที่อยากให้แสดง'
+     */
+    RECORD_TYPE_NAMES: {},
+
     /** internal id ของโฟลเดอร์ SuiteScripts (มาตรฐาน NetSuite = -15) */
     SUITESCRIPTS_FOLDER_ID: -15,
 
