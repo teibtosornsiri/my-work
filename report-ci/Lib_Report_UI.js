@@ -8,6 +8,8 @@
  *   'tabler'  — Tabler (tabler/tabler) โทนกรม/น้ำเงิน การ์ดมีแถบสีด้านบน หัวตารางตัวพิมพ์ใหญ่
  *   'tremor'  — Tremor (tremorlabs/tremor) เน้นกราฟ ฟอนต์ Prompt
  *   'hybrid'  — Tabler × Tremor สีหลักเขียวน้ำทะเล
+ *   'ocean'   — Redwood Ocean (เพิ่ม 09/10/2026) โทนมืดจากหน้าล็อกอิน NetSuite 2026.2 พื้นน้ำเงินทะเลไล่สี สีเน้นทอง #F0CC72
+ *               ฟอนต์ Oracle Sans (มีใน NetSuite) → Open Sans / Noto Sans Thai ถ้าโหลดไม่ได้
  *
  * วิธีใช้ใน Suitelet (แสดงผ่าน INLINEHTML ให้ยังอยู่ใต้เมนู NetSuite):
  *   const ui = UI.create({ theme: 'tremor', density: 'normal' });
@@ -56,12 +58,25 @@ define([], () => {
             radius: '12px', radiusSm: '8px', shadow: '0 1px 3px rgba(15,23,42,.06)',
             thBg: '#f8fafc', thInk: '#475569', thSize: '.86em', thCase: 'none', thTrack: '0',
             kpiStripe: true, kpiIcon: 'round'
+        },
+        ocean: {
+            scheme: 'dark',
+            font: "'Oracle Sans','Open Sans','Noto Sans Thai',system-ui,sans-serif",
+            bg: 'linear-gradient(#264759 9%,#132337 88%) #132337', surface: '#1C3344', surface2: '#1A2F3F',
+            line: 'rgba(229,241,245,.12)', lineStrong: 'rgba(229,241,245,.28)',
+            text: '#E5F1F5', muted: '#A9B9C2', faint: '#7E929E',
+            primary: '#F0CC72', onPrimary: '#0A0A09', primarySoft: 'rgba(240,204,114,.14)',
+            neg: '#EE7362', pos: '#7FD1A8', warn: '#F5A65B',
+            buckets: ['#7FD1A8', '#6CC3E0', '#F0CC72', '#F5A65B', '#EE7362'],
+            radius: '8px', radiusSm: '4px', shadow: '0 4px 26px rgba(0,0,0,.26)',
+            thBg: '#1A2F3F', thInk: '#A9B9C2', thSize: '.86em', thCase: 'none', thTrack: '0',
+            kpiStripe: true, kpiIcon: 'round'
         }
     };
 
     const FONTS = 'https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700'
         + '&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=Prompt:wght@300;400;500;600'
-        + '&family=Outfit:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600&display=swap';
+        + '&family=Outfit:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600&family=Open+Sans:wght@400;600;700&display=swap';
 
     // ---------- helpers ----------
     const esc = v => String(v === null || v === undefined ? '' : v)
@@ -104,7 +119,7 @@ define([], () => {
 --text:${t.text};--muted:${t.muted};--faint:${t.faint};--primary:${t.primary};--on-primary:${t.onPrimary};--primary-soft:${t.primarySoft};
 --neg:${t.neg};--pos:${t.pos};--warn:${t.warn};--b0:${b[0]};--b1:${b[1]};--b2:${b[2]};--b3:${b[3]};--b4:${b[4]};
 --radius:${t.radius};--radius-sm:${t.radiusSm};--shadow:${t.shadow};--th-bg:${t.thBg};--th-ink:${t.thInk};--th-size:${t.thSize};--th-case:${t.thCase};--th-track:${t.thTrack};
-font-family:var(--font);color:var(--text);background:var(--bg);font-size:13.5px;line-height:1.45;padding:20px;border-radius:var(--radius);display:grid;gap:16px;width:100%;box-sizing:border-box}
+color-scheme:${t.scheme || 'light'};font-family:var(--font);color:var(--text);background:var(--bg);font-size:13.5px;line-height:1.45;padding:20px;border-radius:var(--radius);display:grid;gap:16px;width:100%;box-sizing:border-box}
 .rui *,.rui *::before,.rui *::after{box-sizing:border-box}
 .rui.compact{font-size:12.5px}
 .rui svg{width:15px;height:15px;flex:none}
@@ -229,7 +244,28 @@ ${t.kpiStripe ? '.rui .kpi{border-top:3px solid var(--primary)}.rui .kpi.bad{bor
 .rui .inp:focus-within{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 18%,transparent)}
 .rui .inp.bad{border-color:var(--neg);box-shadow:0 0 0 3px color-mix(in srgb,var(--neg) 12%,transparent)}
 .rui .inp.dis{background:var(--surface-2);color:var(--muted);box-shadow:none}
-.rui .inp input,.rui .inp select,.rui .inp textarea{all:unset;flex:1;min-width:0;padding:8px 0;font:inherit;color:inherit;width:100%}
+.rui .inp input,.rui .inp select,.rui .inp textarea{all:unset !important;flex:1 !important;min-width:0 !important;padding:8px 0 !important;font:inherit !important;color:inherit !important;width:100% !important;box-sizing:border-box !important}
+.rui .fbar.cols{display:grid;grid-template-columns:repeat(var(--fcols),minmax(0,1fr));gap:12px 16px;align-items:end}
+.rui .fbar.cols .fld{max-width:none}
+.rui .fbar.cols .actions{grid-column:1/-1;justify-content:flex-end}
+@media (max-width:640px){.rui .fbar.cols{grid-template-columns:1fr}}
+.rui .inp:has([data-datefmt]){position:relative}
+.rui .dp-btn{all:unset;display:flex;cursor:pointer;color:var(--faint)}
+.rui .dp-btn:hover,.rui .dp-btn:focus-visible{color:var(--primary)}
+.rui .dp{position:absolute;top:calc(100% + 6px);left:0;z-index:50;width:252px;padding:10px;background:var(--surface);color:var(--text);border:1px solid var(--line-strong);border-radius:var(--radius);box-shadow:0 10px 28px rgba(0,0,0,.18)}
+.rui .dp-h{display:flex;align-items:center;gap:4px;margin-bottom:6px}
+.rui .dp-h b{flex:1;text-align:center;font-weight:600}
+.rui .dp-nav{all:unset;cursor:pointer;width:28px;height:28px;display:grid;place-items:center;border-radius:var(--radius-sm);color:var(--muted);font-size:16px}
+.rui .dp-nav:hover{background:var(--surface-2);color:var(--text)}
+.rui .dp-g{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
+.rui .dp-g span{font-size:.78em;color:var(--faint);padding:4px 0}
+.rui .dp-d{all:unset;cursor:pointer;height:30px;border-radius:var(--radius-sm);font-variant-numeric:tabular-nums;text-align:center}
+.rui .dp-d:hover{background:var(--primary-soft)}
+.rui .dp-d.out{color:var(--faint)}
+.rui .dp-d.today{box-shadow:inset 0 0 0 1px var(--primary)}
+.rui .dp-d.sel{background:var(--primary);color:var(--on-primary,#fff)}
+.rui .dp-f{display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+.rui .dp-f button{all:unset;cursor:pointer;color:var(--primary);font-weight:500;font-size:.92em;padding:2px 4px}
 .rui .inp textarea{min-height:64px;white-space:pre-wrap}
 .rui .inp svg{color:var(--faint)}
 .rui .inp .ad{align-self:stretch;display:flex;align-items:center;margin-right:-10px;padding:0 10px;border-left:1px solid var(--line);background:var(--surface-2);color:var(--muted);border-radius:0 var(--radius-sm) var(--radius-sm) 0}
@@ -267,6 +303,54 @@ document.querySelectorAll('.rui [data-tabs]').forEach(function(box){
     box.querySelectorAll('.tab').forEach(function(x){x.setAttribute('aria-selected',x===t)});
     var root=box.parentNode;root.querySelectorAll('[data-pane]').forEach(function(p){p.hidden=p.getAttribute('data-pane')!==t.getAttribute('data-tab')});});
 });
+function go(bar){var qs=new URLSearchParams();
+  bar.querySelectorAll('input[name],select[name],textarea[name]').forEach(function(el){
+    if((el.type==='checkbox'||el.type==='radio')&&!el.checked)return;if(el.value!=='')qs.append(el.name,el.value);});
+  var bad=bar.querySelector('[required]:invalid');if(bad){bad.reportValidity&&bad.reportValidity();return;}
+  window.onbeforeunload=null;location.href=bar.getAttribute('data-get-action')+'?'+qs.toString();}
+document.querySelectorAll('.rui [data-get-action]').forEach(function(bar){
+  bar.addEventListener('click',function(e){if(e.target.closest('[data-get-submit]')){e.preventDefault();go(bar);}});
+});
+document.querySelectorAll('.rui input').forEach(function(inp){
+  inp.addEventListener('keydown',function(e){if(e.key!=='Enter')return;e.preventDefault();var bar=inp.closest('[data-get-action]');if(bar)go(bar);});
+});
+// ---- mini date picker ----
+var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var MONTH=['January','February','March','April','May','June','July','August','September','October','November','December'];
+var THM=['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+function toks(f){return f.match(/YYYY|YY|MONTH|Mon|MM|M|DD|D|[^A-Za-z]+/g)||[];}
+function fmt(d,f){return toks(f).map(function(t){return t==='YYYY'?d.getFullYear():t==='YY'?String(d.getFullYear()).slice(-2):t==='MONTH'?MONTH[d.getMonth()]:t==='Mon'?MON[d.getMonth()]
+  :t==='MM'?('0'+(d.getMonth()+1)).slice(-2):t==='M'?d.getMonth()+1:t==='DD'?('0'+d.getDate()).slice(-2):t==='D'?d.getDate():t;}).join('');}
+function parse(s,f){var parts=String(s||'').match(/[A-Za-z]+|\\d+/g)||[],keys=toks(f).filter(function(t){return /[A-Za-z]/.test(t);}),y,m,d;
+  if(parts.length<3)return null;keys.forEach(function(k,i){var v=parts[i];if(k==='YYYY')y=+v;else if(k==='YY')y=2000+(+v);else if(k==='MM'||k==='M')m=+v-1;
+    else if(k==='Mon'||k==='MONTH'){m=MON.findIndex(function(x){return x.toLowerCase()===String(v).slice(0,3).toLowerCase();});}else d=+v;});
+  var r=new Date(y,m,d);return isNaN(r)||r.getMonth()!==m?null:r;}
+var openDp=null;
+function closeDp(){if(openDp){openDp.remove();openDp=null;}}
+function showDp(inp){closeDp();var f=inp.getAttribute('data-datefmt'),sel=parse(inp.value,f),view=new Date((sel||new Date()).getTime());view.setDate(1);
+  var box=document.createElement('div');box.className='dp';box.setAttribute('role','dialog');inp.closest('.inp').appendChild(box);openDp=box;
+  function draw(){var y=view.getFullYear(),m=view.getMonth(),start=new Date(y,m,1-new Date(y,m,1).getDay()),t=new Date(),h='';
+    h+='<div class="dp-h"><button type="button" class="dp-nav" data-m="-1" aria-label="เดือนก่อน">‹</button><b>'+THM[m]+' '+y+'</b><button type="button" class="dp-nav" data-m="1" aria-label="เดือนถัดไป">›</button></div><div class="dp-g">';
+    ['อา','จ','อ','พ','พฤ','ศ','ส'].forEach(function(w){h+='<span>'+w+'</span>';});
+    for(var i=0;i<42;i++){var d=new Date(start.getFullYear(),start.getMonth(),start.getDate()+i),c='dp-d'+(d.getMonth()!==m?' out':'')
+      +(d.toDateString()===t.toDateString()?' today':'')+(sel&&d.toDateString()===sel.toDateString()?' sel':'');
+      h+='<button type="button" class="'+c+'" data-d="'+d.getFullYear()+'-'+d.getMonth()+'-'+d.getDate()+'">'+d.getDate()+'</button>';}
+    h+='</div><div class="dp-f"><button type="button" data-today>วันนี้</button><button type="button" data-close>ปิด</button></div>';box.innerHTML=h;}
+  function pick(d){inp.value=fmt(d,f);inp.dispatchEvent(new Event('change',{bubbles:true}));closeDp();inp.focus();}
+  box.addEventListener('mousedown',function(e){e.preventDefault();});
+  box.addEventListener('click',function(e){e.stopPropagation();var b=e.target.closest('button');if(!b)return;
+    if(b.hasAttribute('data-m')){view.setMonth(view.getMonth()+(+b.getAttribute('data-m')));draw();}
+    else if(b.hasAttribute('data-d')){var p=b.getAttribute('data-d').split('-');pick(new Date(+p[0],+p[1],+p[2]));}
+    else if(b.hasAttribute('data-today'))pick(new Date());else closeDp();});
+  draw();}
+document.querySelectorAll('.rui [data-datefmt]').forEach(function(inp){
+  inp.addEventListener('click',function(e){e.stopPropagation();if(!openDp||openDp.parentNode!==inp.closest('.inp'))showDp(inp);});
+  inp.addEventListener('keydown',function(e){if(e.key==='Escape')closeDp();if(e.key==='ArrowDown')showDp(inp);});
+  var btn=inp.closest('.inp').querySelector('[data-dp-open]');
+  if(btn)btn.addEventListener('click',function(e){e.stopPropagation();if(openDp&&openDp.parentNode===inp.closest('.inp'))closeDp();else showDp(inp);});
+});
+document.addEventListener('click',function(e){if(openDp&&!openDp.contains(e.target))closeDp();});
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeDp();});
 document.querySelectorAll('.rui [data-filter-for]').forEach(function(inp){
   inp.addEventListener('input',function(){var q=inp.value.toLowerCase(),tb=document.getElementById(inp.getAttribute('data-filter-for'));
     if(!tb)return;tb.querySelectorAll('tbody tr:not(.grp):not(.sub)').forEach(function(r){r.hidden=q&&r.textContent.toLowerCase().indexOf(q)<0;});});
@@ -323,19 +407,25 @@ document.querySelectorAll('.rui [data-filter-for]').forEach(function(inp){
             },
 
             /**
-             * แถบ filter เป็น HTML form แบบ GET กลับมาที่ Suitelet เดิม
-             * { action, hidden: {script, deploy}, fields: [ui.field(...)], submitLabel }
+             * แถบ filter ส่งค่าแบบ GET กลับมาที่ Suitelet เดิม
+             * { action, hidden: {script, deploy}, fields: [ui.field(...)], submitLabel, cols }
+             * cols: จำนวนช่องต่อแถว (เช่น 2) — ไม่ระบุ = เรียงต่อกันตามความกว้างจอ · จอแคบ < 640px เหลือ 1 ช่องต่อแถว
+             * ไม่ใช้ <form> ซ้อน เพราะหน้า serverWidget เป็น <form> อยู่แล้ว browser จะทิ้ง form ด้านใน (layout พัง + POST เข้า form ของ NS)
+             * → script ด้านล่างอ่านค่าใน .fbar แล้ว navigate เอง (กด Enter ในช่องก็ได้)
              */
             filterBar(f) {
                 const hidden = Object.keys(f.hidden || {}).map(k => '<input type="hidden" name="' + esc(k) + '" value="' + esc(f.hidden[k]) + '">').join('');
-                return '<form class="card fbar" method="GET" action="' + esc(f.action || '') + '">' + hidden + f.fields.join('')
+                return '<div class="card fbar' + (f.cols ? ' cols" style="--fcols:' + Number(f.cols) : '') + '" data-get-action="' + esc(f.action || '') + '">' + hidden + f.fields.join('')
                     + '<div class="actions">' + (f.resetHref ? ui.button('ล้าง', { href: f.resetHref, kind: 'ghost' }) : '')
-                    + ui.button(f.submitLabel || 'แสดงรายงาน', { kind: 'primary', type: 'submit' }) + '</div></form>';
+                    + '<button class="btn primary" type="button" data-get-submit>' + esc(f.submitLabel || 'แสดงรายงาน') + '</button></div></div>';
             },
 
             /**
              * ช่องกรอก: { id, name, label, type: text|date|number|select|textarea, value, options: [{value,text}],
-             *            required, help, error, locked, suffix, placeholder, full, icon }
+             *            required, help, error, locked, suffix, placeholder, full, icon, picker }
+             * picker: 'D/M/YYYY' (เฉพาะ type 'date') → ปฏิทินเล็กเด้งขึ้นเมื่อคลิกช่อง ค่าที่ส่งยังเป็นข้อความตามรูปแบบนี้
+             *         ส่ง date format ของ user มา เช่น runtime.getCurrentUser().getPreference({ name: 'DATEFORMAT' })
+             *         รองรับ D DD M MM YYYY YY Mon MONTH และตัวคั่นอะไรก็ได้
              */
             field(fd) {
                 const id = esc(fd.id || nextId('f'));
@@ -348,6 +438,10 @@ document.querySelectorAll('.rui [data-filter-for]').forEach(function(inp){
                         '<option value="' + esc(op.value) + '"' + (String(op.value) === String(fd.value) ? ' selected' : '') + '>' + esc(op.text) + '</option>').join('') + '</select>' + icon(fd.locked ? 'lock' : 'chevron');
                 } else if (fd.type === 'textarea') {
                     ctrl = '<textarea id="' + id + '" name="' + name + '"' + ph + dis + '>' + esc(fd.value) + '</textarea>';
+                } else if (fd.type === 'date' && fd.picker) {
+                    ctrl = '<button type="button" class="dp-btn" data-dp-open aria-label="เลือกวันที่"' + dis + '>' + icon('calendar') + '</button>'
+                        + '<input id="' + id + '" name="' + name + '" type="text" value="' + esc(fd.value) + '" autocomplete="off" data-datefmt="' + esc(fd.picker) + '"'
+                        + ' placeholder="' + esc(fd.placeholder || fd.picker) + '"' + dis + '>';
                 } else {
                     const ic = fd.icon || (fd.type === 'date' ? 'calendar' : '');
                     ctrl = (ic ? icon(ic) : '') + '<input id="' + id + '" name="' + name + '" type="' + (fd.type === 'number' ? 'text" inputmode="decimal' : 'text') + '" value="' + esc(fd.value) + '"' + ph + dis
