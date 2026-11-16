@@ -27,14 +27,14 @@ const DB = {
   role: [{ id: 3, name: 'Administrator' }],
   customrecordtype: [
     { scriptid: 'customrecord_twms_inventorycountingplan', name: 'TWMS - Inventory Counting Plan' },
-    { scriptid: 'customrecord_ams_leaserecognize', name: 'AMS Lease Recognize' }
+    { scriptid: 'customrecord_ams_lease_recognize', name: 'AMS Lease Recognize' }
   ],
   customlist: [],
   mediaitemfolder: [],
   file: []
 };
 
-function pick(sql) {
+function pick(sql, params) {
   const s = String(sql);
   if (/sn\.recordid = \?/i.test(s)) return DB.detail;
   if (/GROUP BY sn\.recordid/i.test(s)) return DB.grouped;
@@ -42,7 +42,12 @@ function pick(sql) {
   if (/FROM script WHERE/i.test(s)) return DB.script;
   if (/FROM entity WHERE/i.test(s)) return DB.entity;
   if (/FROM role WHERE/i.test(s)) return DB.role;
-  if (/FROM customrecordtype/i.test(s)) return DB.customrecordtype;
+  if (/FROM customrecordtype/i.test(s)) {
+    const like = (params || []).filter(p => typeof p === 'string' && p.indexOf('%') === 0)[0];
+    if (!like) return DB.customrecordtype;
+    const core = like.replace(/%/g, '').toUpperCase();
+    return DB.customrecordtype.filter(r => String(r.scriptid).toUpperCase().replace(/_/g, '').indexOf(core) >= 0);
+  }
   if (/FROM customlist/i.test(s)) return DB.customlist;
   if (/FROM mediaitemfolder/i.test(s)) return DB.mediaitemfolder;
   if (/FROM file WHERE/i.test(s)) return DB.file;
@@ -52,11 +57,11 @@ function pick(sql) {
 const queryModule = {
   runSuiteQL({ query, params }) {
     queries.push({ query, params });
-    return { asMappedResults: () => pick(query).slice() };
+    return { asMappedResults: () => pick(query, params).slice() };
   },
   runSuiteQLPaged({ query, params }) {
     queries.push({ query, params });
-    const rows = pick(query).slice();
+    const rows = pick(query, params).slice();
     return {
       pageRanges: [{ index: 0 }],
       fetch: () => ({ data: { asMappedResults: () => rows } })
@@ -162,6 +167,8 @@ ok('ADVINTERCOMPANYJOURNALENTRY → Intercompany Journal Entry', L.recordTypeNam
 ok('EXPENSEREPORT → Expense Report', L.recordTypeName('EXPENSEREPORT') === 'Expense Report', L.recordTypeName('EXPENSEREPORT'));
 ok('RETURNAUTHORIZATION → Return Authorization', L.recordTypeName('RETURNAUTHORIZATION') === 'Return Authorization', L.recordTypeName('RETURNAUTHORIZATION'));
 ok('WORKORDERCOMPLETION → Work Order Completion', L.recordTypeName('WORKORDERCOMPLETION') === 'Work Order Completion', L.recordTypeName('WORKORDERCOMPLETION'));
+ok('WORKORDERCLOSE → Work Order Close', L.recordTypeName('WORKORDERCLOSE') === 'Work Order Close', L.recordTypeName('WORKORDERCLOSE'));
+ok('WORKORDERISSUE → Work Order Issue', L.recordTypeName('WORKORDERISSUE') === 'Work Order Issue', L.recordTypeName('WORKORDERISSUE'));
 
 // record type ของ SuiteApp ที่ id ไม่มี prefix customrecord_
 L.fetchRecordTypeNames(['AMS_LEASERECOGNIZE']);

@@ -364,7 +364,8 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
         EXPENSEREPORT: 'Expense Report', CASHSALE: 'Cash Sale', RETURNAUTHORIZATION: 'Return Authorization',
         VENDORRETURNAUTHORIZATION: 'Vendor Return Authorization', WORKORDERCOMPLETION: 'Work Order Completion',
         INVENTORYDISTRIBUTION: 'Inventory Distribution', ASSEMBLYUNBUILD: 'Assembly Unbuild',
-        CUSTOMERPREPAYMENT: 'Customer Prepayment', VENDORPREPAYMENT: 'Vendor Prepayment'
+        CUSTOMERPREPAYMENT: 'Customer Prepayment', VENDORPREPAYMENT: 'Vendor Prepayment',
+        WORKORDERCLOSE: 'Work Order Close', WORKORDERISSUE: 'Work Order Issue'
     };
 
     /** แคชชื่อ record type ที่ query มาแล้ว: 'CUSTOMRECORD_X' → 'TWMS - Inventory Counting Plan' */
@@ -409,6 +410,16 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
         const all = Object.keys(alias);
         ask('customrecordtype', all.filter(k => k.indexOf('CUSTOMRECORD_') === 0));
         ask('customlist', all.filter(k => k.indexOf('CUSTOMLIST_') === 0));
+        // ยังไม่เจอ (มักเป็น record ของ SuiteApp ที่ scriptid ไม่ตรงกับ recordtype) → ค้นด้วย LIKE จากแกนกลางของชื่อ
+        const left = want.filter(k => !tbdllRtNames[k]);
+        left.forEach(k => {
+            const core = k.replace(/^CUSTOM(?:RECORD|LIST|TRANSACTION)_/, '').replace(/_/g, '');
+            if (!/^[A-Z0-9]+$/.test(core) || core.length < 4) return;
+            try {
+                runAll("SELECT scriptid, name FROM customrecordtype WHERE REPLACE(UPPER(scriptid), '_', '') LIKE ? ORDER BY LENGTH(scriptid)", ['%' + core + '%'])
+                    .forEach(r => { if (r.name && !tbdllRtNames[k]) tbdllRtNames[k] = r.name; });
+            } catch (e) { tbdllLog('recordTypeNames like ' + k + ' failed', e.message); }
+        });
     }
 
     /**
