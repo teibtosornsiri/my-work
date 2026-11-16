@@ -30,6 +30,7 @@ const DB = {
     { scriptid: 'customrecord_ams_revaluation', name: 'AMS Revaluation (from table)' }
   ],
   customlist: [],
+  customtransactiontype: [{ scriptid: 'customtransaction_ams_revaluation', name: 'AMS Revaluation' }],
   mediaitemfolder: [],
   file: []
 };
@@ -48,6 +49,7 @@ function pick(sql, params) {
     const core = like.replace(/%/g, '').toUpperCase();
     return DB.customrecordtype.filter(r => String(r.scriptid).toUpperCase().replace(/_/g, '').indexOf(core) >= 0);
   }
+  if (/FROM customtransactiontype/i.test(s)) return DB.customtransactiontype;
   if (/FROM customlist/i.test(s)) return DB.customlist;
   if (/FROM mediaitemfolder/i.test(s)) return DB.mediaitemfolder;
   if (/FROM file WHERE/i.test(s)) return DB.file;
@@ -178,6 +180,13 @@ ok('override ไม่ต้องยิง query', queries.filter(q => /customr
 L.fetchRecordTypeNames(['AMS_REVALUATION']);
 ok('query ลองเติม prefix CUSTOMRECORD_ ให้ id ที่ไม่มี prefix', queries.some(q => /customrecordtype/.test(q.query) && /CUSTOMRECORD_AMS_REVALUATION/.test(q.query)));
 ok('LIKE แบบตัด _ ออกเจอชื่อในตาราง', L.recordTypeName('AMS_REVALUATION') === 'AMS Revaluation (from table)', L.recordTypeName('AMS_REVALUATION'));
+
+// custom transaction type อยู่คนละตาราง (customtransactiontype) — เจอจริงใน PROD กับ AMS_*/AUC_*
+L.fetchRecordTypeNames(['CUSTOMTRANSACTION_AMS_REVALUATION']);
+ok('query customtransactiontype ถูกเรียก', queries.some(q => /FROM customtransactiontype/.test(q.query)));
+ok('CUSTOMTRANSACTION_AMS_REVALUATION → ชื่อจากตาราง', L.recordTypeName('CUSTOMTRANSACTION_AMS_REVALUATION') === 'AMS Revaluation', L.recordTypeName('CUSTOMTRANSACTION_AMS_REVALUATION'));
+ok('override ใน Config แมตช์ได้แม้ id มี prefix เกิน', L.recordTypeName('CUSTOMTRANSACTION_AMS_WRITEOFF') === 'AMS Write-Off', L.recordTypeName('CUSTOMTRANSACTION_AMS_WRITEOFF'));
+ok('override แมตช์ได้เมื่อ Config ใส่ key แบบไม่มี prefix', L.recordTypeName('AMS_WRITEOFF') === 'AMS Write-Off', L.recordTypeName('AMS_WRITEOFF'));
 
 // ================= 2) run() ต่อวัน + scriptText =================
 console.log('\n--- 2) L.run(day) ---');
