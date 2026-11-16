@@ -27,7 +27,7 @@ const DB = {
   role: [{ id: 3, name: 'Administrator' }],
   customrecordtype: [
     { scriptid: 'customrecord_twms_inventorycountingplan', name: 'TWMS - Inventory Counting Plan' },
-    { scriptid: 'customrecord_ams_lease_recognize', name: 'AMS Lease Recognize' }
+    { scriptid: 'customrecord_ams_revaluation', name: 'AMS Revaluation (from table)' }
   ],
   customlist: [],
   mediaitemfolder: [],
@@ -170,10 +170,14 @@ ok('WORKORDERCOMPLETION → Work Order Completion', L.recordTypeName('WORKORDERC
 ok('WORKORDERCLOSE → Work Order Close', L.recordTypeName('WORKORDERCLOSE') === 'Work Order Close', L.recordTypeName('WORKORDERCLOSE'));
 ok('WORKORDERISSUE → Work Order Issue', L.recordTypeName('WORKORDERISSUE') === 'Work Order Issue', L.recordTypeName('WORKORDERISSUE'));
 
-// record type ของ SuiteApp ที่ id ไม่มี prefix customrecord_
-L.fetchRecordTypeNames(['AMS_LEASERECOGNIZE']);
-ok('query ลองเติม prefix CUSTOMRECORD_ ให้ id ที่ไม่มี prefix', queries.some(q => /customrecordtype/.test(q.query) && /CUSTOMRECORD_AMS_LEASERECOGNIZE/.test(q.query)));
-ok('AMS_LEASERECOGNIZE → ชื่อจาก customrecordtype', L.recordTypeName('AMS_LEASERECOGNIZE') === 'AMS Lease Recognize', L.recordTypeName('AMS_LEASERECOGNIZE'));
+// ชื่อที่ตั้งเองใน Config ชนะทุกทาง (ใช้กับ record ของ SuiteApp ที่หาในตารางไม่เจอ)
+ok('RECORD_TYPE_NAMES ใน Config ชนะ STD map', L.recordTypeName('AMS_WRITEOFF') === 'AMS Write-Off', L.recordTypeName('AMS_WRITEOFF'));
+ok('override ไม่ต้องยิง query', queries.filter(q => /customrecordtype/.test(q.query)).length === queries.length - queries.filter(q => !/customrecordtype/.test(q.query)).length);
+
+// record type ของ SuiteApp ที่ id ไม่มี prefix และขีดล่างไม่ตรงกับตาราง → ต้องเจอทาง LIKE เท่านั้น
+L.fetchRecordTypeNames(['AMS_REVALUATION']);
+ok('query ลองเติม prefix CUSTOMRECORD_ ให้ id ที่ไม่มี prefix', queries.some(q => /customrecordtype/.test(q.query) && /CUSTOMRECORD_AMS_REVALUATION/.test(q.query)));
+ok('LIKE แบบตัด _ ออกเจอชื่อในตาราง', L.recordTypeName('AMS_REVALUATION') === 'AMS Revaluation (from table)', L.recordTypeName('AMS_REVALUATION'));
 
 // ================= 2) run() ต่อวัน + scriptText =================
 console.log('\n--- 2) L.run(day) ---');

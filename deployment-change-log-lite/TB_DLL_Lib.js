@@ -429,6 +429,9 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
     function recordTypeName(id) {
         const key = String(id || '').toUpperCase().trim();
         if (!key) return '';
+        const over = CFG.RECORD_TYPE_NAMES || {};
+        const ov = over[key] !== undefined ? over[key] : over[String(id || '').trim()];
+        if (ov) return String(ov);
         if (STD_RT[key]) return STD_RT[key];
         if (tbdllRtNames[key]) return tbdllRtNames[key];
         const m = key.match(/^CUSTOM(?:RECORD|LIST|TRANSACTION)_(.+)$/);
