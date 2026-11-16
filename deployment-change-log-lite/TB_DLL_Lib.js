@@ -358,13 +358,24 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
         PHONE_CALL: 'Phone Call', SUPPORT_CASE: 'Case', ISSUE: 'Issue', SOLUTION: 'Solution',
         MESSAGE: 'Message', ENTITYGROUP: 'Group', CAMPAIGN: 'Campaign', PRICELEVEL: 'Price Level',
         REVENUEELEMENT: 'Revenue Element', REVENUEARRANGEMENT: 'Revenue Arrangement', REVENUEPLAN: 'Revenue Plan',
-        CUSTOMTRANSACTION: 'Custom Transaction'
+        CUSTOMTRANSACTION: 'Custom Transaction',
+        // เจอจริงใน DA PROD (16/11/2026) — ถ้าไม่ใส่จะเหลือคำติดกัน เช่น "Customerrefund"
+        ADVINTERCOMPANYJOURNALENTRY: 'Intercompany Journal Entry', CUSTOMERREFUND: 'Customer Refund',
+        EXPENSEREPORT: 'Expense Report', CASHSALE: 'Cash Sale', RETURNAUTHORIZATION: 'Return Authorization',
+        VENDORRETURNAUTHORIZATION: 'Vendor Return Authorization', WORKORDERCOMPLETION: 'Work Order Completion',
+        INVENTORYDISTRIBUTION: 'Inventory Distribution', ASSEMBLYUNBUILD: 'Assembly Unbuild',
+        CUSTOMERPREPAYMENT: 'Customer Prepayment', VENDORPREPAYMENT: 'Vendor Prepayment'
     };
 
     /** แคชชื่อ record type ที่ query มาแล้ว: 'CUSTOMRECORD_X' → 'TWMS - Inventory Counting Plan' */
     const tbdllRtNames = {};
 
-    /** query ชื่อ custom record / custom list จาก script id (ทำครั้งเดียวต่อคำขอ) */
+    /**
+     * query ชื่อ custom record / custom list จาก script id (ทำครั้งเดียวต่อคำขอ)
+     * บาง record type (โดยเฉพาะของ SuiteApp) `scriptdeployment.recordtype` ไม่มี prefix
+     * เช่น `AMS_LEASERECOGNIZE` ขณะที่ตารางเก็บเป็น `customrecord_ams_leaserecognize`
+     * → ลอง query ทั้งแบบมี prefix และไม่มี แล้วเก็บชื่อกลับไปที่ key เดิม
+     */
     function fetchRecordTypeNames(list) {
         const want = [];
         (list || []).forEach(x => {
@@ -373,6 +384,14 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
         });
         if (!want.length) return;
         want.forEach(k => { tbdllRtNames[k] = ''; });          // กัน query ซ้ำเมื่อเรียกอีกครั้ง
+        const alias = {};                                      // script id ที่จะถาม → key เดิมที่ต้องการ
+        want.forEach(k => {
+            alias[k] = k;
+            if (!/^CUSTOM(?:RECORD|LIST|TRANSACTION)_/.test(k)) {
+                alias['CUSTOMRECORD_' + k] = k;
+                alias['CUSTOMLIST_' + k] = k;
+            }
+        });
         const ask = (table, keys) => {
             if (!keys.length) return;
             chunk(keys, 200).forEach(part => {
@@ -380,14 +399,16 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
                 try {
                     runAll('SELECT scriptid, name FROM ' + table + ' WHERE UPPER(scriptid) IN (' + inList + ')')
                         .forEach(r => {
-                            const key = String(r.scriptid || '').toUpperCase();
-                            if (key) tbdllRtNames[key] = r.name || '';
+                            const found = String(r.scriptid || '').toUpperCase();
+                            const key = alias[found] || found;
+                            if (key && r.name) tbdllRtNames[key] = r.name;
                         });
                 } catch (e) { tbdllLog('recordTypeNames ' + table + ' failed', e.message); }
             });
         };
-        ask('customrecordtype', want.filter(k => k.indexOf('CUSTOMRECORD_') === 0));
-        ask('customlist', want.filter(k => k.indexOf('CUSTOMLIST_') === 0));
+        const all = Object.keys(alias);
+        ask('customrecordtype', all.filter(k => k.indexOf('CUSTOMRECORD_') === 0));
+        ask('customlist', all.filter(k => k.indexOf('CUSTOMLIST_') === 0));
     }
 
     /**

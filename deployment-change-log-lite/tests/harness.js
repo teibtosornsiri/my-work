@@ -25,7 +25,10 @@ const DB = {
   script: [{ id: 3476, scriptid: 'customscript_da_ue_invenoty_count', name: 'DA - UE Inventory Counting Plan', scripttype: 'USEREVENT', scriptfile: '' }],
   entity: [{ id: 24079204, entityid: '24079204', firstname: 'Sornsiri', lastname: 'Teibto', altname: '' }],
   role: [{ id: 3, name: 'Administrator' }],
-  customrecordtype: [{ scriptid: 'customrecord_twms_inventorycountingplan', name: 'TWMS - Inventory Counting Plan' }],
+  customrecordtype: [
+    { scriptid: 'customrecord_twms_inventorycountingplan', name: 'TWMS - Inventory Counting Plan' },
+    { scriptid: 'customrecord_ams_leaserecognize', name: 'AMS Lease Recognize' }
+  ],
   customlist: [],
   mediaitemfolder: [],
   file: []
@@ -152,6 +155,18 @@ L.fetchRecordTypeNames(['CUSTOMRECORD_TWMS_INVENTORYCOUNTINGPLAN']);
 ok('query customrecordtype ถูกเรียก', queries.some(q => /FROM customrecordtype/.test(q.query)));
 ok('ดึงชื่อจริงจาก customrecordtype', L.recordTypeName('CUSTOMRECORD_TWMS_INVENTORYCOUNTINGPLAN') === 'TWMS - Inventory Counting Plan', L.recordTypeName('CUSTOMRECORD_TWMS_INVENTORYCOUNTINGPLAN'));
 ok('cache: query รอบสองไม่ยิงซ้ำ', (() => { const n = queries.filter(q => /customrecordtype/.test(q.query)).length; L.fetchRecordTypeNames(['CUSTOMRECORD_TWMS_INVENTORYCOUNTINGPLAN']); return queries.filter(q => /customrecordtype/.test(q.query)).length === n; })());
+
+// ประเภทที่เจอจริงใน DA แต่เดิมหลุดเป็นคำติดกัน
+ok('CUSTOMERREFUND → Customer Refund', L.recordTypeName('CUSTOMERREFUND') === 'Customer Refund', L.recordTypeName('CUSTOMERREFUND'));
+ok('ADVINTERCOMPANYJOURNALENTRY → Intercompany Journal Entry', L.recordTypeName('ADVINTERCOMPANYJOURNALENTRY') === 'Intercompany Journal Entry', L.recordTypeName('ADVINTERCOMPANYJOURNALENTRY'));
+ok('EXPENSEREPORT → Expense Report', L.recordTypeName('EXPENSEREPORT') === 'Expense Report', L.recordTypeName('EXPENSEREPORT'));
+ok('RETURNAUTHORIZATION → Return Authorization', L.recordTypeName('RETURNAUTHORIZATION') === 'Return Authorization', L.recordTypeName('RETURNAUTHORIZATION'));
+ok('WORKORDERCOMPLETION → Work Order Completion', L.recordTypeName('WORKORDERCOMPLETION') === 'Work Order Completion', L.recordTypeName('WORKORDERCOMPLETION'));
+
+// record type ของ SuiteApp ที่ id ไม่มี prefix customrecord_
+L.fetchRecordTypeNames(['AMS_LEASERECOGNIZE']);
+ok('query ลองเติม prefix CUSTOMRECORD_ ให้ id ที่ไม่มี prefix', queries.some(q => /customrecordtype/.test(q.query) && /CUSTOMRECORD_AMS_LEASERECOGNIZE/.test(q.query)));
+ok('AMS_LEASERECOGNIZE → ชื่อจาก customrecordtype', L.recordTypeName('AMS_LEASERECOGNIZE') === 'AMS Lease Recognize', L.recordTypeName('AMS_LEASERECOGNIZE'));
 
 // ================= 2) run() ต่อวัน + scriptText =================
 console.log('\n--- 2) L.run(day) ---');
