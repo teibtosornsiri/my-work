@@ -410,6 +410,7 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
         const all = Object.keys(alias);
         ask('customrecordtype', all.filter(k => k.indexOf('CUSTOMRECORD_') === 0));
         ask('customlist', all.filter(k => k.indexOf('CUSTOMLIST_') === 0));
+        ask('customtransactiontype', all.filter(k => k.indexOf('CUSTOMTRANSACTION_') === 0));
         // ยังไม่เจอ (มักเป็น record ของ SuiteApp ที่ scriptid ไม่ตรงกับ recordtype) → ค้นด้วย LIKE จากแกนกลางของชื่อ
         const left = want.filter(k => !tbdllRtNames[k]);
         left.forEach(k => {
@@ -422,16 +423,29 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
         });
     }
 
+    /** ชื่อที่ตั้งเองใน Config — จับคู่ได้แม้ key ใน Config ไม่มี prefix (หรือมีเกิน) */
+    function overName(id) {
+        const over = CFG.RECORD_TYPE_NAMES || {};
+        const key = String(id || '').toUpperCase().trim();
+        if (!key) return '';
+        const bare = key.replace(/^CUSTOM(?:RECORD|LIST|TRANSACTION)_/, '');
+        const cands = [key, bare];
+        ['CUSTOMRECORD_', 'CUSTOMTRANSACTION_', 'CUSTOMLIST_'].forEach(p => { if (key.indexOf(p) !== 0) cands.push(p + bare); });
+        for (let i = 0; i < cands.length; i++) {
+            if (over[cands[i]]) return String(over[cands[i]]);
+        }
+        return '';
+    }
+
     /**
      * script id ของ record type → ชื่อที่ผู้ตรวจอ่านรู้เรื่อง
-     *   JOURNALENTRY → 'Journal Entry' · CUSTOMRECORD_TWMS_X → ชื่อจาก customrecordtype · ไม่รู้จัก → แปลง _ เป็นช่องว่าง
+     *   JOURNALENTRY → 'Journal Entry' · CUSTOMRECORD_TWMS_X / CUSTOMTRANSACTION_Y → ชื่อจากตาราง · ไม่รู้จัก → แปลง _ เป็นช่องว่าง
      */
     function recordTypeName(id) {
         const key = String(id || '').toUpperCase().trim();
         if (!key) return '';
-        const over = CFG.RECORD_TYPE_NAMES || {};
-        const ov = over[key] !== undefined ? over[key] : over[String(id || '').trim()];
-        if (ov) return String(ov);
+        const ov = overName(key);
+        if (ov) return ov;
         if (STD_RT[key]) return STD_RT[key];
         if (tbdllRtNames[key]) return tbdllRtNames[key];
         const m = key.match(/^CUSTOM(?:RECORD|LIST|TRANSACTION)_(.+)$/);
