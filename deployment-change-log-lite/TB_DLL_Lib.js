@@ -177,8 +177,12 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
      */
     function probeRecordTypes(fromYmd, toYmd, o) {
         const opt = o || {};
-        const where = ["sn.date >= TO_DATE(?, 'YYYY-MM-DD')", "sn.date < TO_DATE(?, 'YYYY-MM-DD') + 1"];
-        const params = [fromYmd, toYmd];
+        // ช่วงเวลาระดับชั่วโมง (o.fromTs / o.toTs = 'YYYY-MM-DD HH24:MI', toTs ไม่รวม) ใช้ซอยวันให้ request เล็กลง
+        const byTs = opt.fromTs && opt.toTs;
+        const where = byTs
+            ? ["sn.date >= TO_DATE(?, 'YYYY-MM-DD HH24:MI')", "sn.date < TO_DATE(?, 'YYYY-MM-DD HH24:MI')"]
+            : ["sn.date >= TO_DATE(?, 'YYYY-MM-DD')", "sn.date < TO_DATE(?, 'YYYY-MM-DD') + 1"];
+        const params = byTs ? [opt.fromTs, opt.toTs] : [fromYmd, toYmd];
         if (opt.actor) { where.push('sn.name = ?'); params.push(Number(opt.actor)); }
         if (opt.recordId) { where.push('sn.recordid = ?'); params.push(Number(opt.recordId)); }
         const rows = tbdllQuery.runSuiteQL({

@@ -125,7 +125,7 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
         function buildProbe(ui, per, ctx, pf) {
             const days = L.daysBetween(per.fromYmd, per.toYmd, 92);
             const boot = {
-                days, who: pf.actor ? 'me' : 'all', rid: pf.recordId || '',
+                days, sliceHours: 6, who: pf.actor ? 'me' : 'all', rid: pf.recordId || '',
                 ajaxUrl: selfUrl({ view: 'probe' }),
                 mapped: L.rectypes().toType
             };
@@ -148,7 +148,11 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
                 ui.card({ title: 'ความคืบหน้า', body: '<div id="tbdll-status" style="margin-bottom:8px">กด "เริ่มสแกน" หรือ "ตรวจหา File อัตโนมัติ"</div>'
                     + '<div style="height:8px;border-radius:4px;background:var(--line,#e5e7eb);overflow:hidden"><div id="tbdll-bar" style="height:100%;width:0;background:var(--primary,#2563eb);transition:width .2s"></div></div>'
                     + '<div id="tbdll-log" style="margin-top:8px;font-size:12px;color:var(--muted,#6b7280);max-height:120px;overflow:auto"></div>' }),
-                ui.card({ title: 'ผลลัพธ์', flush: true, body: '<div id="tbdll-result" style="padding:16px">ยังไม่มีผล</div>' })
+                ui.card({ title: 'ผลลัพธ์', flush: true, body: '<div style="padding:12px 16px;display:flex;gap:16px;align-items:center;flex-wrap:wrap">'
+                    + '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="tbdll-hidecr" checked> ซ่อน custom record (CUSTOMRECORDENTRY)</label>'
+                    + '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="tbdll-onlyhit"> เฉพาะแถวที่น่าจะใช่</label>'
+                    + '<input id="tbdll-q" placeholder="กรองคำ เช่น SCRIPT, MEDIA, ROLE" style="flex:1;min-width:200px;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px">'
+                    + '<span id="tbdll-count" style="color:#6b7280"></span></div><div id="tbdll-result" style="padding:16px">ยังไม่มีผล</div>' })
             ]);
             return html + '<script>window.TBDLL_PROBE=' + JSON.stringify(boot).replace(/</g, '\\u003c') + ';</script><script>' + PROBE_JS + '</script>';
         }
@@ -165,23 +169,36 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
             'function get(params){var u=B.ajaxUrl;for(var k in params)u+="&"+k+"="+encodeURIComponent(params[k]);',
             '  return fetch(u,{credentials:"same-origin"}).then(function(r){return r.text();}).then(function(t){try{return JSON.parse(t);}catch(e){throw new Error("ตอบกลับไม่ใช่ JSON (session หมดหรือ script error)");}});}',
             'function total(){var n=0;for(var k in agg)n+=agg[k].cnt;return n;}',
-            'function render(){var keys=Object.keys(agg).sort(function(a,b){return agg[b].last.localeCompare(agg[a].last);});',
-            '  if(!keys.length){$("tbdll-result").innerHTML="ไม่พบ System Note";return;}',
-            '  var h="<div class=\\"scroll\\"><table class=\\"rt\\"><thead><tr><th>recordtypeid</th><th>ชื่อ</th><th class=\\"n\\">จำนวนแถว</th><th>recordid ตัวอย่าง</th><th>field ตัวอย่าง</th><th class=\\"n\\">ล่าสุด</th><th>map แล้วเป็น</th></tr></thead><tbody>";',
-            '  keys.forEach(function(k){var r=agg[k];h+="<tr><td>"+esc(k)+"</td><td>"+esc(r.label||"")+"</td><td class=\\"n\\">"+r.cnt.toLocaleString()+"</td><td>"+esc(r.samples.slice(0,4).join(", "))+"</td><td>"+esc(r.field)+"</td><td class=\\"n\\">"+esc(r.last)+"</td><td>"+esc(B.mapped[k]||"")+"</td></tr>";});',
+            'var HIT=/SCRIPT|MEDIA|FILE|FOLDER|ROLE|CUSTFIELD|CUSTOMFIELD|BODYFIELD|COLUMNFIELD|ENTITYFIELD|ITEMFIELD|CRMFIELD|OTHERFIELD|WORKFLOW|CUSTRECORDTYPE|CUSTOMRECORDTYPE|SAVEDSEARCH|TEMPLATE|FORM/;',
+            'function prefix(f){f=String(f||"");var i=f.indexOf(".");return i>0?f.slice(0,i):f;}',
+            'function isCR(k,r){return prefix(r.field)==="CUSTOMRECORDENTRY";}',
+            'function isHit(r){return !isCR("",r)&&HIT.test(prefix(r.field).toUpperCase());}',
+            'function render(){var hide=$("tbdll-hidecr").checked,only=$("tbdll-onlyhit").checked,q=String($("tbdll-q").value||"").trim().toUpperCase();',
+            '  var all=Object.keys(agg),keys=all.filter(function(k){var r=agg[k];if(hide&&isCR(k,r))return false;if(only&&!isHit(r))return false;if(q&&(k+" "+r.field+" "+(r.label||"")).toUpperCase().indexOf(q)<0)return false;return true;})',
+            '    .sort(function(a,b){return (isHit(agg[b])?1:0)-(isHit(agg[a])?1:0)||agg[b].last.localeCompare(agg[a].last);});',
+            '  $("tbdll-count").innerHTML="แสดง "+keys.length+" จาก "+all.length+" record type";',
+            '  if(!keys.length){$("tbdll-result").innerHTML=all.length?"ไม่มีแถวตามตัวกรอง":"ไม่พบ System Note";return;}',
+            '  var h="<div class=\\"scroll\\"><table class=\\"rt\\"><thead><tr><th>recordtypeid</th><th>ประเภทจาก field</th><th>ชื่อ</th><th class=\\"n\\">จำนวนแถว</th><th>recordid ตัวอย่าง</th><th>field ตัวอย่าง</th><th class=\\"n\\">ล่าสุด</th><th>map แล้วเป็น</th></tr></thead><tbody>";',
+            '  keys.forEach(function(k){var r=agg[k],hit=isHit(r);h+="<tr"+(hit?" style=\\"background:rgba(37,99,235,.08)\\"":"")+"><td><b>"+esc(k)+"</b></td><td>"+esc(prefix(r.field))+(hit?" <span class=\\"badge b-info\\">น่าจะใช่</span>":"")+"</td><td>"+esc(r.label||"")+"</td><td class=\\"n\\">"+r.cnt.toLocaleString()+"</td><td>"+esc(r.samples.slice(0,4).join(", "))+"</td><td>"+esc(r.field)+"</td><td class=\\"n\\">"+esc(r.last)+"</td><td>"+esc(B.mapped[k]||"")+"</td></tr>";});',
             '  $("tbdll-result").innerHTML=h+"</tbody></table></div>";}',
             'function merge(rows){rows.forEach(function(r){var k=String(r.rt);var a=agg[k]||(agg[k]={cnt:0,samples:[],field:r.samplefield||"",last:"",label:""});',
             '  a.cnt+=Number(r.cnt)||0;[r.samplerec,r.samplerec2].forEach(function(s){s=String(s);if(s&&a.samples.indexOf(s)<0)a.samples.push(s);});',
             '  if(String(r.lastdate||"")>a.last){a.last=String(r.lastdate||"");a.day=a.last.slice(0,10);}});}',
-            'function scan(){if(busy)return;busy=true;stop=false;agg={};t0=Date.now();$("tbdll-log").innerHTML="";',
-            '  var days=B.days,i=0,who=val("who",B.who),rid=val("rid",B.rid);',
-            '  function next(){if(stop){status("หยุดที่วันที่ "+i+"/"+days.length+" · พบ "+Object.keys(agg).length+" record type · "+total().toLocaleString()+" แถว · "+sec()+" วิ");busy=false;return;}',
-            '    if(i>=days.length){labels();return;}',
-            '    var d=days[i];status("กำลังสแกนวันที่ <b>"+d+"</b> ("+(i+1)+"/"+days.length+") · พบแล้ว "+Object.keys(agg).length+" record type · "+total().toLocaleString()+" แถว · "+sec()+" วิ",i/days.length*90);',
-            '    var tries=0;(function go(){get({ajax:"probeday",day:d,who:who,rid:rid}).then(function(j){if(!j.ok)throw new Error(j.error||"error");merge(j.rows);render();logl(d+": "+j.rows.length+" record type, "+j.ms+" ms");i++;next();})',
-            '      .catch(function(e){if(++tries<2){logl(d+": ลองใหม่ ("+esc(e.message)+")");go();}else{logl("<b>"+d+": ข้าม</b> "+esc(e.message));i++;next();}});})();}',
+            'var cur="",waitFrom=0,tick=null;',
+            'function pad(n){return (n<10?"0":"")+n;}',
+            'function nextDay(d){var t=Date.UTC(+d.slice(0,4),+d.slice(5,7)-1,+d.slice(8,10))+864e5,x=new Date(t);return x.getUTCFullYear()+"-"+pad(x.getUTCMonth()+1)+"-"+pad(x.getUTCDate());}',
+            'function slices(){var out=[],st=B.sliceHours||6;B.days.forEach(function(d){for(var h=0;h<24;h+=st){var e=h+st;out.push({from:d+" "+pad(h)+":00",to:e>=24?nextDay(d)+" 00:00":d+" "+pad(e)+":00",label:d+" "+pad(h)+":00–"+(e>=24?"24":pad(e))+":00"});}});return out;}',
+            'function startTick(){stopTick();tick=setInterval(function(){if(cur)status(cur+" · รอ server "+Math.round((Date.now()-waitFrom)/1000)+" วิ · รวม "+sec()+" วิ");},1000);}',
+            'function stopTick(){if(tick)clearInterval(tick);tick=null;cur="";}',
+            'function scan(){if(busy)return;busy=true;stop=false;agg={};t0=Date.now();$("tbdll-log").innerHTML="";startTick();',
+            '  var sl=slices(),i=0,who=val("who",B.who),rid=val("rid",B.rid);',
+            '  function next(){if(stop){stopTick();status("หยุดที่ช่วง "+i+"/"+sl.length+" · พบ "+Object.keys(agg).length+" record type · "+total().toLocaleString()+" แถว · "+sec()+" วิ");busy=false;return;}',
+            '    if(i>=sl.length){stopTick();labels();return;}',
+            '    var s=sl[i];cur="กำลังสแกน <b>"+s.label+"</b> (ช่วง "+(i+1)+"/"+sl.length+") · พบแล้ว "+Object.keys(agg).length+" record type · "+total().toLocaleString()+" แถว";waitFrom=Date.now();status(cur+" · รวม "+sec()+" วิ",i/sl.length*90);',
+            '    var tries=0;(function go(){get({ajax:"probeday",from:s.from,to:s.to,who:who,rid:rid}).then(function(j){if(!j.ok)throw new Error(j.error||"error");merge(j.rows);render();logl(s.label+": "+j.rows.length+" record type, "+(j.ms/1000).toFixed(1)+" วิ");i++;next();})',
+            '      .catch(function(e){if(++tries<2){logl(s.label+": ลองใหม่ ("+esc(e.message)+")");go();}else{logl("<b>"+s.label+": ข้าม</b> "+esc(e.message));i++;next();}});})();}',
             '  next();}',
-            'function labels(){var keys=Object.keys(agg).slice(0,40),j=0;',
+            'function labels(){var keys=Object.keys(agg).filter(function(k){return !isCR(k,agg[k]);}).sort(function(a,b){return (isHit(agg[b])?1:0)-(isHit(agg[a])?1:0);}).slice(0,40),j=0;',
             '  function next(){if(stop||j>=keys.length){status("เสร็จ · "+B.days.length+" วัน · "+Object.keys(agg).length+" record type · "+total().toLocaleString()+" แถว · "+sec()+" วิ",100);busy=false;render();return;}',
             '    var k=keys[j];status("สแกนครบแล้ว กำลังหาชื่อ record type "+(j+1)+"/"+keys.length+" · "+sec()+" วิ",90+j/keys.length*10);',
             '    get({ajax:"label",rt:k,day:agg[k].day||B.days[0]}).then(function(x){agg[k].label=x.label||"";}).catch(function(){}).then(function(){j++;render();next();});}',
@@ -196,6 +213,8 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
             '$("tbdll-start").addEventListener("click",function(){scan();});',
             '$("tbdll-stop").addEventListener("click",function(){stop=true;});',
             '$("tbdll-auto").addEventListener("click",function(){auto();});',
+            '["tbdll-hidecr","tbdll-onlyhit"].forEach(function(id){$(id).addEventListener("change",render);});$("tbdll-q").addEventListener("input",render);',
+            '$("tbdll-q").addEventListener("keydown",function(e){if(e.key==="Enter")e.preventDefault();});',
             '})();'
         ].join('\n');
 
@@ -209,9 +228,10 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
             const t = Date.now();
             try {
                 if (p.ajax === 'probeday') {
-                    const day = String(p.day || '');
-                    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('day ไม่ถูกต้อง');
-                    const rows = L.probeRecordTypes(day, day, {
+                    const tsOk = s => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(String(s || ''));
+                    if (!tsOk(p.from) || !tsOk(p.to)) throw new Error('from/to ต้องเป็น YYYY-MM-DD HH:MI');
+                    const rows = L.probeRecordTypes('', '', {
+                        fromTs: String(p.from), toTs: String(p.to),
                         actor: p.who === 'me' ? String(runtime.getCurrentUser().id) : '',
                         recordId: /^\d+$/.test(String(p.rid || '')) ? String(p.rid) : '',
                         limit: 200, skipLabels: true
