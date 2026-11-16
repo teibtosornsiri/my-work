@@ -33,6 +33,17 @@ define([], () => ({
     /** role สิทธิ์สูงที่แสดงรายชื่อคนถือให้ผู้ review ทบทวน (3 = Administrator) */
     PRIVILEGED_ROLE_IDS: [3],
 
+    /**
+     * ขอบเขตของ File ที่นับ
+     *   'suitescripts' = เฉพาะไฟล์ใต้โฟลเดอร์ SuiteScripts (รวม lib, HTML/template ที่ script ใช้) — แนะนำ
+     *   'scriptfile'   = เฉพาะไฟล์ที่เป็น Script File ของ Script record (แคบสุด ไม่รวม lib)
+     *   'all'          = ทุกไฟล์ใน File Cabinet
+     */
+    FILE_SCOPE: 'suitescripts',
+
+    /** internal id ของโฟลเดอร์ SuiteScripts (มาตรฐาน NetSuite = -15) */
+    SUITESCRIPTS_FOLDER_ID: -15,
+
     /** context ของ System Note ที่ไม่นับ (เช่น การแก้โดย script ของระบบเอง) — ว่าง = นับทั้งหมด */
     EXCLUDE_CONTEXTS: [],
 

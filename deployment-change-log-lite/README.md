@@ -32,15 +32,16 @@
 
 1. อัป 5 ไฟล์ไว้โฟลเดอร์เดียว เช่น `SuiteScripts/TB_DeployLogLite/`
 2. สร้าง Script record + Deployment
-    - **Suitelet:** Status Released · Audience: IT, ผู้ review · ใส่ลิงก์ในเมนู · Execute as Role: Administrator (ต้องอ่าน `systemnote` และรายชื่อ role ได้)
-    - **Scheduled:** Monthly วันที่ 1 เวลา 02:00 · parameter `custscript_tbdll_ss_period` (Free-Form Text, ไม่บังคับ ใช้ทดสอบเดือนอื่นด้วยค่า `YYYY-MM`)
+    - **Suitelet:** Status Released · Log Level: Audit · Audience: IT, ผู้ review · ใส่ลิงก์ในเมนู · Execute as Role: Administrator (ต้องอ่าน `systemnote` และรายชื่อ role ได้)
+    - **Scheduled:** Log Level: Audit · Monthly วันที่ 1 เวลา 02:00 · parameter `custscript_tbdll_ss_period` (Free-Form Text, ไม่บังคับ ใช้ทดสอบเดือนอื่นด้วยค่า `YYYY-MM`)
     - Script ID และ Deployment ID ของ Suitelet ต้องตรงกับ `SL_REPORT` ใน Config (ใช้ทำลิงก์ในอีเมล)
-3. ตั้ง `TB_DLL_Config.js`: `DEPLOYER_ROLE_IDS` / `DEPLOYER_EMPLOYEE_IDS`, `REVIEWER_EMPLOYEE_IDS`, `EMAIL_AUTHOR_ID`, `SNAPSHOT_FOLDER_ID`
-4. **หา `recordtypeid` ด้วย Probe**
-    1. แก้ object ที่รู้จักทีละประเภท (อัปไฟล์ทับ 1 ไฟล์, แก้ description ของ script, แก้ label ของ custom field, แก้ role)
-    2. เปิด Suitelet ต่อท้าย `&view=probe` เลือกวันนั้น
-    3. แถวที่ `recordid ตัวอย่าง` ตรงกับ internal id ของ object ที่เพิ่งแก้ → ใส่ `recordtypeid` ลง `RECTYPE_MAP`
-    4. ประเภทที่ไม่โผล่ = SuiteQL มองไม่เห็น ต้องใช้ Saved Search บน record นั้นเสริม
+3. ตั้ง `TB_DLL_Config.js`: `DEPLOYER_ROLE_IDS` / `DEPLOYER_EMPLOYEE_IDS`, `FILE_SCOPE` (`suitescripts` ค่าเริ่มต้น = เฉพาะไฟล์ใต้ SuiteScripts · `scriptfile` = เฉพาะ Script File ของ Script record · `all`) และถ้าใช้ Scheduled: `REVIEWER_EMPLOYEE_IDS`, `EMAIL_AUTHOR_ID`, `SNAPSHOT_FOLDER_ID`
+    - อยากดูแค่ script กับไฟล์ของ script: map ใน `RECTYPE_MAP` แค่ Script, Script Deployment, File แล้วปล่อยที่เหลือเป็น `null`
+4. **หา `recordtypeid` ด้วย Probe** (เปิด Suitelet ต่อท้าย `&view=probe`)
+    - **File:** กด "ตรวจหา File อัตโนมัติ" ระบบดูไฟล์ใต้ SuiteScripts ที่แก้ล่าสุด 5 ไฟล์ แล้วบอกค่าที่แนะนำ
+    - **ประเภทอื่น:** แก้ object นั้นด้วย user ตัวเอง (เช่น แก้ description ของ script) → เลือกวันนั้น + ใส่ Internal ID ของ object (เร็วสุด) → กด "เริ่มสแกน" → แถวที่ recordid ตรง = ค่าของประเภทนั้น
+    - สแกนทีละวัน มีแถบความคืบหน้า (วันที่กำลังสแกน, record type ที่พบ, จำนวนแถว, เวลาที่ใช้) และปุ่มหยุด วันที่ error จะลองใหม่ 1 ครั้งแล้วข้าม · ค่าเริ่มต้น 7 วันล่าสุด สูงสุด 92 วัน
+    - ใส่ค่าที่ได้ลง `RECTYPE_MAP` · ประเภทที่ไม่โผล่ = SuiteQL มองไม่เห็น ต้องใช้ Saved Search บน record นั้นเสริม
 5. ทดสอบ: แก้ไฟล์ด้วย user ที่ไม่อยู่ในรายชื่อผู้มีสิทธิ์ deploy → รายงานต้องติดธง
 
 ## Process รายเดือน

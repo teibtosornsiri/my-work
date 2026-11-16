@@ -168,22 +168,132 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
         return changes;
     }
 
-    function probeRecordTypes(fromYmd, toYmd, limit) {
+    /**
+     * โหมด probe: recordtypeid ที่มีการเปลี่ยนแปลง — ใช้ตั้ง RECTYPE_MAP
+     * systemnote ทั้งบัญชีใหญ่มาก (รวม transaction) จึงต้องกรองแคบเสมอ:
+     *   o.actor     employee id ของคนที่แก้ (ค่าเริ่มต้น = ผู้เปิดหน้า) — ส่ง '' เมื่อต้องการทุกคน
+     *   o.recordId  internal id ของ object ที่เพิ่งแก้ (ถ้ารู้) — แคบที่สุด
+     * คืน { rows, sql } (sql ไว้แสดงให้รู้ว่ากรองอะไร)
+     */
+    function probeRecordTypes(fromYmd, toYmd, o) {
+        const opt = o || {};
+        const where = ["sn.date >= TO_DATE(?, 'YYYY-MM-DD')", "sn.date < TO_DATE(?, 'YYYY-MM-DD') + 1"];
+        const params = [fromYmd, toYmd];
+        if (opt.actor) { where.push('sn.name = ?'); params.push(Number(opt.actor)); }
+        if (opt.recordId) { where.push('sn.recordid = ?'); params.push(Number(opt.recordId)); }
         const rows = tbdllQuery.runSuiteQL({
-            query: 'SELECT sn.recordtypeid AS rt, COUNT(*) AS cnt, MIN(sn.recordid) AS samplerec, MIN(sn.field) AS samplefield, MAX(sn.date) AS lastdate ' +
-                "FROM systemnote sn WHERE sn.date >= TO_DATE(?, 'YYYY-MM-DD') AND sn.date < TO_DATE(?, 'YYYY-MM-DD') + 1 " +
-                'GROUP BY sn.recordtypeid ORDER BY cnt DESC',
-            params: [fromYmd, toYmd]
-        }).asMappedResults().slice(0, limit || 30);
+            query: 'SELECT sn.recordtypeid AS rt, COUNT(*) AS cnt, MIN(sn.recordid) AS samplerec, MAX(sn.recordid) AS samplerec2, ' +
+                "MIN(sn.field) AS samplefield, TO_CHAR(MAX(sn.date), 'YYYY-MM-DD HH24:MI') AS lastdate " +
+                'FROM systemnote sn WHERE ' + where.join(' AND ') + ' GROUP BY sn.recordtypeid ORDER BY lastdate DESC',
+            params
+        }).asMappedResults().slice(0, opt.limit || 30);
         const mapped = rectypes().toType;
         rows.forEach(r => {
             r.mappedAs = mapped[String(r.rt)] || '';
-            try {
-                const x = tbdllQuery.runSuiteQL({ query: 'SELECT BUILTIN.DF(sn.recordtypeid) AS label FROM systemnote sn WHERE sn.recordtypeid = ? FETCH FIRST 1 ROWS ONLY', params: [r.rt] }).asMappedResults();
-                r.label = x.length ? x[0].label : '';
-            } catch (e) { r.label = ''; }
+            r.samples = String(r.samplerec) === String(r.samplerec2) ? String(r.samplerec) : r.samplerec + ', ' + r.samplerec2;
+            r.label = '';
         });
+        // ชื่อ record type: query ละแถว ใช้ตัวกรองเดียวกัน (ไม่สแกนทั้งตาราง) ทำเฉพาะเมื่อผลไม่เยอะ
+        if (!opt.skipLabels && rows.length <= 15) {
+            rows.forEach(r => {
+                try {
+                    const x = tbdllQuery.runSuiteQL({
+                        query: 'SELECT BUILTIN.DF(sn.recordtypeid) AS label FROM systemnote sn WHERE ' + where.join(' AND ') + ' AND sn.recordtypeid = ? FETCH FIRST 1 ROWS ONLY',
+                        params: params.concat([r.rt])
+                    }).asMappedResults();
+                    r.label = x.length ? x[0].label : '';
+                } catch (e) { r.label = ''; }
+            });
+        }
         return rows;
+    }
+
+    // ---------- ขอบเขต File ----------
+
+    /** id ของโฟลเดอร์ SuiteScripts และโฟลเดอร์ย่อยทุกชั้น (string) */
+    function suiteScriptFolderIds() {
+        const root = String(CFG.SUITESCRIPTS_FOLDER_ID);
+        const all = runAll('SELECT id, parent FROM mediaitemfolder');
+        const kids = {};
+        all.forEach(f => { const p = f.parent === null || f.parent === undefined ? '' : String(f.parent); (kids[p] = kids[p] || []).push(String(f.id)); });
+        const out = {}, stack = [root];
+        while (stack.length) {
+            const id = stack.pop();
+            if (out[id]) continue;
+            out[id] = true;
+            (kids[id] || []).forEach(k => stack.push(k));
+        }
+        return out;
+    }
+
+    /** id ของไฟล์ที่อยู่ในขอบเขต FILE_SCOPE จากรายการ id ที่ให้มา → set (string) · 'all' = คืน null (ไม่กรอง) */
+    function fileIdsInScope(fileIds) {
+        const scope = CFG.FILE_SCOPE || 'suitescripts';
+        if (scope === 'all' || !fileIds.length) return null;
+        const keep = {};
+        if (scope === 'scriptfile') {
+            chunk(ids(fileIds), 200).forEach(part => runAll('SELECT DISTINCT scriptfile FROM script WHERE scriptfile IN (' + part.join(',') + ')')
+                .forEach(r => { keep[String(r.scriptfile)] = true; }));
+            return keep;
+        }
+        const folders = suiteScriptFolderIds();
+        chunk(ids(fileIds), 200).forEach(part => runAll('SELECT id, folder FROM file WHERE id IN (' + part.join(',') + ')')
+            .forEach(r => { if (folders[String(r.folder)]) keep[String(r.id)] = true; }));
+        return keep;
+    }
+
+    /** ตัดการเปลี่ยนแปลงของ File ที่อยู่นอกขอบเขต */
+    function applyFileScope(changes) {
+        const fileIds = changes.filter(c => c.objType === 'File').map(c => c.objId).filter((x, i, a) => a.indexOf(x) === i);
+        const keep = fileIdsInScope(fileIds);
+        if (!keep) return changes;
+        return changes.filter(c => c.objType !== 'File' || keep[c.objId]);
+    }
+
+    /**
+     * หา recordtypeid ของ File อัตโนมัติ: ไฟล์ใต้ SuiteScripts ที่แก้ล่าสุด n ไฟล์ → System Note ของไฟล์นั้นในวันที่แก้
+     * คืน [{rt, cnt, fileId, fileName, day}] — rt ที่ซ้ำกันหลายไฟล์ = มั่นใจได้
+     */
+    function autoDetectFileRectype(n) {
+        const folders = Object.keys(suiteScriptFolderIds()).map(Number).filter(Number.isFinite);
+        const files = [];
+        chunk(folders, 200).forEach(part => runAll(
+            "SELECT id, name, TO_CHAR(lastmodifieddate, 'YYYY-MM-DD') AS d, lastmodifieddate AS lm FROM file WHERE folder IN (" + part.join(',') + ') ORDER BY lastmodifieddate DESC FETCH FIRST ' + (n || 5) + ' ROWS ONLY')
+            .forEach(f => files.push(f)));
+        files.sort((a, b) => String(b.d).localeCompare(String(a.d)));
+        const out = [];
+        files.slice(0, n || 5).forEach(f => {
+            const rows = tbdllQuery.runSuiteQL({
+                query: "SELECT sn.recordtypeid AS rt, COUNT(*) AS cnt FROM systemnote sn WHERE sn.date >= TO_DATE(?, 'YYYY-MM-DD') AND sn.date < TO_DATE(?, 'YYYY-MM-DD') + 1 AND sn.recordid = ? GROUP BY sn.recordtypeid",
+                params: [f.d, f.d, Number(f.id)]
+            }).asMappedResults();
+            rows.forEach(r => out.push({ rt: r.rt, cnt: r.cnt, fileId: String(f.id), fileName: f.name, day: f.d }));
+            if (!rows.length) out.push({ rt: '', cnt: 0, fileId: String(f.id), fileName: f.name, day: f.d });
+        });
+        return out;
+    }
+
+    /** ชื่อของ recordtypeid หนึ่งตัว — กรองด้วยวันที่ที่รู้ว่ามีแถว (ไม่สแกนทั้งตาราง) */
+    function recordTypeLabel(rt, dayYmd) {
+        try {
+            const x = tbdllQuery.runSuiteQL({
+                query: "SELECT BUILTIN.DF(sn.recordtypeid) AS label FROM systemnote sn WHERE sn.date >= TO_DATE(?, 'YYYY-MM-DD') AND sn.date < TO_DATE(?, 'YYYY-MM-DD') + 1 AND sn.recordtypeid = ? FETCH FIRST 1 ROWS ONLY",
+                params: [dayYmd, dayYmd, Number(rt)]
+            }).asMappedResults();
+            return x.length ? (x[0].label || '') : '';
+        } catch (e) { return ''; }
+    }
+
+    /** รายการวัน YYYY-MM-DD จาก from ถึง to (รวมปลาย) */
+    function daysBetween(fromYmd, toYmd, max) {
+        const out = [];
+        let t = parseTs(fromYmd);
+        const end = parseTs(toYmd);
+        while (t !== null && end !== null && t <= end && out.length < (max || 366)) {
+            out.push(fmtTs(t).slice(0, 10));
+            t += 864e5;
+        }
+        return out;
     }
 
     // ---------- สรุป (pure) ----------
@@ -210,7 +320,7 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
 
     function run(fromYmd, toYmd) {
         const notes = fetchSystemNotes(fromYmd, toYmd);
-        const res = summarize(attachObjectNames(groupChanges(notes)), deployerSet());
+        const res = summarize(attachObjectNames(applyFileScope(groupChanges(notes))), deployerSet());
         res.noteRows = notes.length;
         return res;
     }
@@ -231,7 +341,8 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
     return {
         CFG, runAll, chunk, ids, parseTs, fmtTs, ymd,
         rectypes, configWarnings, employeesWithRoles, deployerSet,
-        fetchSystemNotes, groupChanges, attachObjectNames, probeRecordTypes,
+        fetchSystemNotes, groupChanges, attachObjectNames, probeRecordTypes, recordTypeLabel, daysBetween,
+        suiteScriptFolderIds, fileIdsInScope, applyFileScope, autoDetectFileRectype,
         summarize, run, toCsv,
         log: tbdllLog
     };

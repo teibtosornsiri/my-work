@@ -19,16 +19,18 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
             try { return runtime.getCurrentUser().getPreference({ name: 'DATEFORMAT' }); } catch (e) { return ''; }
         }
 
-        function readPeriod(p) {
+        function readPeriod(p, todayDefault) {
             const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
             const parse = (s, d) => {
                 if (!s) return d;
                 const iso = String(s).match(/^(\d{4})-(\d{2})-(\d{2})$/);
                 if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3]);
                 try { return format.parse({ value: s, type: format.Type.DATE }); } catch (e) { return d; }
             };
-            const from = parse(p.f_from, new Date(now.getFullYear(), now.getMonth() - 1, 1));
-            const to = parse(p.f_to, new Date(now.getFullYear(), now.getMonth(), 0));
+            // probe ค่าเริ่มต้น = 7 วันล่าสุด · รายงาน = เดือนก่อน
+            const from = parse(p.f_from, todayDefault ? new Date(today.getTime() - 6 * 864e5) : new Date(now.getFullYear(), now.getMonth() - 1, 1));
+            const to = parse(p.f_to, todayDefault ? today : new Date(now.getFullYear(), now.getMonth(), 0));
             return {
                 fromText: format.format({ value: from, type: format.Type.DATE }),
                 toText: format.format({ value: to, type: format.Type.DATE }),
@@ -41,13 +43,13 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
             return url.resolveScript({ scriptId: s.id, deploymentId: s.deploymentId, params: params || {} });
         }
 
-        function filterBar(ui, per, ctx, extraHidden) {
+        function filterBar(ui, per, ctx, extraHidden, extraFields) {
             return ui.filterBar({
-                action: ctx.baseUrl, hidden: Object.assign({}, ctx.hidden, extraHidden || {}), cols: 3,
+                action: ctx.baseUrl, hidden: Object.assign({}, ctx.hidden, extraHidden || {}), cols: extraFields ? 4 : 3,
                 fields: [
                     ui.field({ id: 'f_from', label: 'ตั้งแต่', type: 'date', value: per.fromText, picker: ctx.dateFmt }),
                     ui.field({ id: 'f_to', label: 'ถึง', type: 'date', value: per.toText, picker: ctx.dateFmt })
-                ]
+                ].concat(extraFields || [])
             });
         }
 
@@ -116,30 +118,113 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
             ]);
         }
 
-        function buildProbe(ui, per, rows, ctx) {
-            return ui.render([
+        /**
+         * หน้า probe: โหลดหน้าเปล่าก่อน แล้ว browser ทยอยดึงทีละวันผ่าน &ajax=probeday พร้อมแถบความคืบหน้า
+         * (Suitelet ตอบได้ทีเดียวตอนจบ จึงแยกเป็นหลาย request เล็ก ๆ — ไม่ timeout และเห็นว่าถึงไหนแล้ว)
+         */
+        function buildProbe(ui, per, ctx, pf) {
+            const days = L.daysBetween(per.fromYmd, per.toYmd, 92);
+            const boot = {
+                days, who: pf.actor ? 'me' : 'all', rid: pf.recordId || '',
+                ajaxUrl: selfUrl({ view: 'probe' }),
+                mapped: L.rectypes().toType
+            };
+            const html = ui.render([
                 ui.header({
                     crumb: 'Change Report', crumbCurrent: 'Probe',
-                    title: 'recordtypeid ที่มีการเปลี่ยนแปลง ' + per.fromText + ' – ' + per.toText,
-                    meta: 'แก้ object ที่รู้จัก (อัปไฟล์ทับ, แก้ description ของ script ฯลฯ) แล้วเปิดหน้านี้ช่วงวันนั้น หาแถวที่ recordid ตรง แล้วใส่ใน RECTYPE_MAP',
-                    actions: [ui.button('กลับไปรายงาน', { href: selfUrl({ f_from: per.fromYmd, f_to: per.toYmd }), kind: 'ghost' })]
+                    title: 'หา recordtypeid ' + per.fromText + ' – ' + per.toText + ' (' + days.length + ' วัน)',
+                    meta: 'ปุ่มซ้าย: หา recordtypeid ของ File อัตโนมัติจากไฟล์ใต้ SuiteScripts ที่แก้ล่าสุด · ประเภทอื่น (Script, Field, Role): แก้ object นั้นด้วย user ตัวเอง แล้วสแกนวันนั้นหาแถวที่ recordid ตรงกับ internal id',
+                    actions: [
+                        ui.button('ตรวจหา File อัตโนมัติ', { id: 'tbdll-auto', kind: 'primary' }),
+                        ui.button('เริ่มสแกน', { id: 'tbdll-start' }),
+                        ui.button('หยุด', { id: 'tbdll-stop', kind: 'ghost' }),
+                        ui.button('กลับไปรายงาน', { href: selfUrl({}), kind: 'ghost' })
+                    ]
                 }),
-                filterBar(ui, per, ctx, { view: 'probe' }),
-                ui.card({
-                    title: '30 อันดับที่มีแถวมากที่สุด', flush: true, body: ui.table({
-                        columns: [
-                            { key: 'rt', label: 'recordtypeid' },
-                            { key: 'label', label: 'ชื่อ (BUILTIN.DF)', type: 'wrap' },
-                            { key: 'cnt', label: 'จำนวนแถว', type: 'int' },
-                            { key: 'samplerec', label: 'recordid ตัวอย่าง' },
-                            { key: 'samplefield', label: 'field ตัวอย่าง' },
-                            { key: 'lastdate', label: 'ล่าสุด', type: 'date' },
-                            { key: 'mappedAs', label: 'map แล้วเป็น' }
-                        ],
-                        rows
-                    })
-                })
+                filterBar(ui, per, ctx, { view: 'probe' }, [
+                    ui.field({ id: 'rid', label: 'Internal ID ของ object (ไม่บังคับ)', value: pf.recordId || '', placeholder: 'แคบสุดและเร็วสุด' }),
+                    ui.field({ id: 'who', label: 'ผู้แก้', type: 'select', value: boot.who, options: [{ value: 'all', text: 'ทุกคน' }, { value: 'me', text: 'เฉพาะฉัน (เร็วกว่า)' }] })
+                ]),
+                ui.card({ title: 'ความคืบหน้า', body: '<div id="tbdll-status" style="margin-bottom:8px">กด "เริ่มสแกน" หรือ "ตรวจหา File อัตโนมัติ"</div>'
+                    + '<div style="height:8px;border-radius:4px;background:var(--line,#e5e7eb);overflow:hidden"><div id="tbdll-bar" style="height:100%;width:0;background:var(--primary,#2563eb);transition:width .2s"></div></div>'
+                    + '<div id="tbdll-log" style="margin-top:8px;font-size:12px;color:var(--muted,#6b7280);max-height:120px;overflow:auto"></div>' }),
+                ui.card({ title: 'ผลลัพธ์', flush: true, body: '<div id="tbdll-result" style="padding:16px">ยังไม่มีผล</div>' })
             ]);
+            return html + '<script>window.TBDLL_PROBE=' + JSON.stringify(boot).replace(/</g, '\\u003c') + ';</script><script>' + PROBE_JS + '</script>';
+        }
+
+        const PROBE_JS = [
+            '(function(){',
+            'var B=window.TBDLL_PROBE,stop=false,busy=false,agg={},t0=0;',
+            'function $(id){return document.getElementById(id);}',
+            'function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;"}[c];});}',
+            'function sec(){return Math.round((Date.now()-t0)/1000);}',
+            'function status(t,pct){$("tbdll-status").innerHTML=t;if(pct!=null)$("tbdll-bar").style.width=pct+"%";}',
+            'function logl(t){var d=$("tbdll-log");d.innerHTML="<div>"+t+"</div>"+d.innerHTML;}',
+            'function val(id,def){var e=document.getElementById(id);return e?e.value:def;}',
+            'function get(params){var u=B.ajaxUrl;for(var k in params)u+="&"+k+"="+encodeURIComponent(params[k]);',
+            '  return fetch(u,{credentials:"same-origin"}).then(function(r){return r.text();}).then(function(t){try{return JSON.parse(t);}catch(e){throw new Error("ตอบกลับไม่ใช่ JSON (session หมดหรือ script error)");}});}',
+            'function total(){var n=0;for(var k in agg)n+=agg[k].cnt;return n;}',
+            'function render(){var keys=Object.keys(agg).sort(function(a,b){return agg[b].last.localeCompare(agg[a].last);});',
+            '  if(!keys.length){$("tbdll-result").innerHTML="ไม่พบ System Note";return;}',
+            '  var h="<div class=\\"scroll\\"><table class=\\"rt\\"><thead><tr><th>recordtypeid</th><th>ชื่อ</th><th class=\\"n\\">จำนวนแถว</th><th>recordid ตัวอย่าง</th><th>field ตัวอย่าง</th><th class=\\"n\\">ล่าสุด</th><th>map แล้วเป็น</th></tr></thead><tbody>";',
+            '  keys.forEach(function(k){var r=agg[k];h+="<tr><td>"+esc(k)+"</td><td>"+esc(r.label||"")+"</td><td class=\\"n\\">"+r.cnt.toLocaleString()+"</td><td>"+esc(r.samples.slice(0,4).join(", "))+"</td><td>"+esc(r.field)+"</td><td class=\\"n\\">"+esc(r.last)+"</td><td>"+esc(B.mapped[k]||"")+"</td></tr>";});',
+            '  $("tbdll-result").innerHTML=h+"</tbody></table></div>";}',
+            'function merge(rows){rows.forEach(function(r){var k=String(r.rt);var a=agg[k]||(agg[k]={cnt:0,samples:[],field:r.samplefield||"",last:"",label:""});',
+            '  a.cnt+=Number(r.cnt)||0;[r.samplerec,r.samplerec2].forEach(function(s){s=String(s);if(s&&a.samples.indexOf(s)<0)a.samples.push(s);});',
+            '  if(String(r.lastdate||"")>a.last){a.last=String(r.lastdate||"");a.day=a.last.slice(0,10);}});}',
+            'function scan(){if(busy)return;busy=true;stop=false;agg={};t0=Date.now();$("tbdll-log").innerHTML="";',
+            '  var days=B.days,i=0,who=val("who",B.who),rid=val("rid",B.rid);',
+            '  function next(){if(stop){status("หยุดที่วันที่ "+i+"/"+days.length+" · พบ "+Object.keys(agg).length+" record type · "+total().toLocaleString()+" แถว · "+sec()+" วิ");busy=false;return;}',
+            '    if(i>=days.length){labels();return;}',
+            '    var d=days[i];status("กำลังสแกนวันที่ <b>"+d+"</b> ("+(i+1)+"/"+days.length+") · พบแล้ว "+Object.keys(agg).length+" record type · "+total().toLocaleString()+" แถว · "+sec()+" วิ",i/days.length*90);',
+            '    var tries=0;(function go(){get({ajax:"probeday",day:d,who:who,rid:rid}).then(function(j){if(!j.ok)throw new Error(j.error||"error");merge(j.rows);render();logl(d+": "+j.rows.length+" record type, "+j.ms+" ms");i++;next();})',
+            '      .catch(function(e){if(++tries<2){logl(d+": ลองใหม่ ("+esc(e.message)+")");go();}else{logl("<b>"+d+": ข้าม</b> "+esc(e.message));i++;next();}});})();}',
+            '  next();}',
+            'function labels(){var keys=Object.keys(agg).slice(0,40),j=0;',
+            '  function next(){if(stop||j>=keys.length){status("เสร็จ · "+B.days.length+" วัน · "+Object.keys(agg).length+" record type · "+total().toLocaleString()+" แถว · "+sec()+" วิ",100);busy=false;render();return;}',
+            '    var k=keys[j];status("สแกนครบแล้ว กำลังหาชื่อ record type "+(j+1)+"/"+keys.length+" · "+sec()+" วิ",90+j/keys.length*10);',
+            '    get({ajax:"label",rt:k,day:agg[k].day||B.days[0]}).then(function(x){agg[k].label=x.label||"";}).catch(function(){}).then(function(){j++;render();next();});}',
+            '  next();}',
+            'function auto(){if(busy)return;busy=true;t0=Date.now();status("กำลังหาไฟล์ใต้ SuiteScripts ที่แก้ล่าสุด แล้วดู System Note ของไฟล์นั้น…",30);',
+            '  get({ajax:"autofile"}).then(function(j){if(!j.ok)throw new Error(j.error);var c={};j.rows.forEach(function(r){if(r.rt!=="")c[r.rt]=(c[r.rt]||0)+1;});',
+            '    var h="<div class=\\"scroll\\"><table class=\\"rt\\"><thead><tr><th>ไฟล์</th><th>file id</th><th>วันที่แก้</th><th>recordtypeid ที่พบ</th><th class=\\"n\\">แถว</th></tr></thead><tbody>";',
+            '    j.rows.forEach(function(r){h+="<tr><td>"+esc(r.fileName)+"</td><td>"+esc(r.fileId)+"</td><td>"+esc(r.day)+"</td><td>"+(r.rt===""?"ไม่พบ System Note":esc(r.rt))+"</td><td class=\\"n\\">"+esc(r.cnt)+"</td></tr>";});',
+            '    var best=Object.keys(c).sort(function(a,b){return c[b]-c[a];})[0];',
+            '    $("tbdll-result").innerHTML=(best?"<div style=\\"padding:12px 16px\\"><b>แนะนำ: \'File\': "+esc(best)+"</b> (พบใน "+c[best]+" จาก "+j.rows.filter(function(r){return r.rt!=="";}).length+" แถวที่ตรวจ) — ใส่ใน RECTYPE_MAP ของ TB_DLL_Config</div>":"<div style=\\"padding:12px 16px\\">ไม่พบ System Note ของไฟล์ที่แก้ล่าสุด — SuiteQL อาจไม่เห็นการเปลี่ยนแปลงของ File</div>")+h+"</tbody></table></div>";',
+            '    status("ตรวจหา File เสร็จ · "+sec()+" วิ",100);}).catch(function(e){status("ไม่สำเร็จ: "+esc(e.message),0);}).then(function(){busy=false;});}',
+            '$("tbdll-start").addEventListener("click",function(){scan();});',
+            '$("tbdll-stop").addEventListener("click",function(){stop=true;});',
+            '$("tbdll-auto").addEventListener("click",function(){auto();});',
+            '})();'
+        ].join('\n');
+
+        function json(ctx, obj) {
+            ctx.response.setHeader({ name: 'Content-Type', value: 'application/json; charset=utf-8' });
+            ctx.response.write(JSON.stringify(obj));
+        }
+
+        /** endpoint ของหน้า probe — คืน JSON เสมอ */
+        function probeAjax(ctx, p) {
+            const t = Date.now();
+            try {
+                if (p.ajax === 'probeday') {
+                    const day = String(p.day || '');
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('day ไม่ถูกต้อง');
+                    const rows = L.probeRecordTypes(day, day, {
+                        actor: p.who === 'me' ? String(runtime.getCurrentUser().id) : '',
+                        recordId: /^\d+$/.test(String(p.rid || '')) ? String(p.rid) : '',
+                        limit: 200, skipLabels: true
+                    });
+                    return json(ctx, { ok: true, rows, ms: Date.now() - t });
+                }
+                if (p.ajax === 'label') return json(ctx, { ok: true, label: L.recordTypeLabel(p.rt, String(p.day || '')) });
+                if (p.ajax === 'autofile') return json(ctx, { ok: true, rows: L.autoDetectFileRectype(5), ms: Date.now() - t });
+                throw new Error('ไม่รู้จัก ajax=' + p.ajax);
+            } catch (e) {
+                L.log('probe ajax ' + p.ajax, e.message);
+                return json(ctx, { ok: false, error: e.message });
+            }
         }
 
         function page(ctx, html) {
@@ -159,9 +244,17 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
                 dateFmt: dateFmt(),
                 warnings: L.configWarnings()
             };
-            const per = readPeriod(p);
+            const isProbe = p.view === 'probe';
+            const per = readPeriod(p, isProbe);
             try {
-                if (p.view === 'probe') return page(ctx, buildProbe(ui, per, L.probeRecordTypes(per.fromYmd, per.toYmd, 30), view));
+                if (isProbe) {
+                    if (p.ajax) return probeAjax(ctx, p);
+                    const pf = {
+                        actor: p.who === 'me' ? String(runtime.getCurrentUser().id) : '',
+                        recordId: /^\d+$/.test(String(p.rid || '').trim()) ? String(p.rid).trim() : ''
+                    };
+                    return page(ctx, buildProbe(ui, per, view, pf));
+                }
                 const res = L.run(per.fromYmd, per.toYmd);
                 if (p.export === 'csv') {
                     ctx.response.addHeader({ name: 'Content-Type', value: 'text/csv; charset=utf-8' });
