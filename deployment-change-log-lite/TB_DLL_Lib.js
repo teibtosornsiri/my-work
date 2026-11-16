@@ -129,7 +129,82 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
 
     // ---------- System Notes ----------
 
+    /**
+     * เงื่อนไขไฟล์ใน SQL: เฉพาะไฟล์ใน FILE_SCOPE + นามสกุลโปรแกรม (ให้ฐานข้อมูลกรอง ไม่ลากทุกไฟล์ออกมา)
+     * คืน { sql, params } สำหรับต่อท้ายเงื่อนไข MEDIAITEM หรือ null ถ้าไม่ต้องกรอง
+     */
+    function fileSubqueryWhere() {
+        const scope = CFG.FILE_SCOPE || 'suitescripts';
+        const exts = (CFG.CODE_FILE_EXTENSIONS || []).map(e => String(e).replace(/^\./, '').toLowerCase()).filter(e => /^[a-z0-9]+$/.test(e));
+        const conds = [];
+        if (scope === 'suitescripts') {
+            const folders = Object.keys(suiteScriptFolderIds()).map(Number).filter(Number.isFinite);
+            if (!folders.length) return null;
+            conds.push('(' + chunk(folders, 900).map(part => 'f.folder IN (' + part.join(',') + ')').join(' OR ') + ')');
+        } else if (scope === 'scriptfile') {
+            conds.push('f.id IN (SELECT s.scriptfile FROM script s WHERE s.scriptfile IS NOT NULL)');
+        }
+        if (exts.length) conds.push('(' + exts.map(e => "LOWER(f.name) LIKE '%." + e + "'").join(' OR ') + ')');
+        return conds.length ? 'sn.recordid IN (SELECT f.id FROM file f WHERE ' + conds.join(' AND ') + ')' : null;
+    }
+
+    /**
+     * ดึงการเปลี่ยนแปลงแบบรวมใน SQL: 1 แถว = การ save 1 ครั้ง (object + ผู้แก้ + นาที) — ไม่ลากทุก field
+     * ไฟล์ถูกกรองด้วย subquery ของตาราง file · ถ้า SQL แบบนี้ใช้ไม่ได้ จะ fallback เป็นแบบเดิม (ทีละ field)
+     */
     function fetchSystemNotes(fromYmd, toYmd) {
+        const rt = rectypes();
+        const rw = rectypeWhere(rt);
+        if (!rw) return [];
+        const parts = [], params = [fromYmd, toYmd];
+        if (rt.all.length) parts.push('sn.recordtypeid IN (' + rt.all.join(',') + ')');
+        let fileSub = null;
+        try { fileSub = fileSubqueryWhere(); } catch (e) { tbdllLog('fileSubqueryWhere failed', e.message); }
+        rt.nullRules.forEach(r => {
+            const isFile = r.type === 'File';
+            parts.push('(sn.recordtypeid IS NULL AND UPPER(sn.field) LIKE ?' + (isFile && fileSub ? ' AND ' + fileSub : '') + ')');
+            params.push(r.prefix + '%');
+        });
+        const where = "sn.date >= TO_DATE(?, 'YYYY-MM-DD') AND sn.date < TO_DATE(?, 'YYYY-MM-DD') + 1 AND (" + parts.join(' OR ') + ')';
+        const grouped = "SELECT sn.recordid, sn.recordtypeid, sn.name AS actor, sn.role, sn.context, TO_CHAR(sn.date, 'YYYY-MM-DD HH24:MI') AS tsmin, " +
+            'COUNT(*) AS cnt, MIN(sn.field) AS f1, MAX(sn.field) AS f2 FROM systemnote sn WHERE ' + where +
+            " GROUP BY sn.recordid, sn.recordtypeid, sn.name, sn.role, sn.context, TO_CHAR(sn.date, 'YYYY-MM-DD HH24:MI')";
+        let rows;
+        try {
+            rows = runAll(grouped, params);
+        } catch (e) {
+            tbdllLog('systemnote grouped query failed, fallback to row query', e.message);
+            return fetchSystemNotesRows(fromYmd, toYmd);
+        }
+        const skip = (CFG.EXCLUDE_CONTEXTS || []).map(String);
+        const roleNames = {};
+        const roleIds = ids(rows.map(r => r.role).filter((x, i, a) => x !== null && x !== undefined && a.indexOf(x) === i));
+        chunk(roleIds, 200).forEach(part => {
+            try { tbdllQuery.runSuiteQL({ query: 'SELECT id, name FROM role WHERE id IN (' + part.join(',') + ')' }).asMappedResults().forEach(x => { roleNames[String(x.id)] = x.name; }); } catch (e) { /* ไม่มีชื่อ role ก็ได้ */ }
+        });
+        const out = [];
+        rows.filter(r => skip.indexOf(String(r.context || '')) < 0).forEach(r => {
+            const fields = [r.f1, r.f2].filter((x, i, a) => x && a.indexOf(x) === i);
+            fields.forEach((f, i) => out.push({
+                objType: typeOfNote(rt, r.recordtypeid, r.f1),
+                objId: String(r.recordid),
+                field: f + (i === fields.length - 1 && Number(r.cnt) > fields.length ? ' (+' + (Number(r.cnt) - fields.length) + ' field)' : ''),
+                oldValue: '', newValue: '',
+                context: r.context || '',
+                noteType: '',
+                actor: r.actor === null || r.actor === undefined ? '' : String(r.actor),
+                actorName: r.actor ? '#' + r.actor : '',
+                role: r.role === null || r.role === undefined ? '' : String(r.role),
+                roleName: roleNames[String(r.role)] || '',
+                ts: parseTs(r.tsmin),
+                cnt: i === 0 ? Number(r.cnt) || 0 : 0
+            }));
+        });
+        return out;
+    }
+
+    /** แบบเดิม: ทีละ field พร้อมค่าเดิม → ใหม่ (ใช้เมื่อ SQL แบบรวมใช้ไม่ได้) */
+    function fetchSystemNotesRows(fromYmd, toYmd) {
         const rt = rectypes();
         const rw = rectypeWhere(rt);
         if (!rw) return [];
@@ -531,18 +606,29 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
         return '﻿' + lines.join('\r\n');
     }
 
+    /** สรุปผลจากรายการที่ดึงแล้ว (ใช้ตอน browser ส่งรายการครบทุกวันมาให้วาด) */
+    function finish(changes, meta) {
+        const res = summarize(changes, CFG.FLAG_UNAUTHORIZED === false ? {} : deployerSet());
+        res.noteRows = (meta && meta.noteRows) || 0;
+        res.ms = (meta && meta.ms) || 0;
+        res.actors = Object.keys(changes.reduce((m, c) => (m[c.actor] = 1, m), {})).length;
+        res.groups = groupByScript(changes);
+        res.scripts = res.groups.filter(g => g.kind === 'script').length;
+        return res;
+    }
+
     function run(fromYmd, toYmd) {
         const t0 = Date.now();
         const notes = fetchSystemNotes(fromYmd, toYmd);
         const t1 = Date.now();
         const changes = attachScriptInfo(attachActorNames(attachObjectNames(applyFileScope(groupChanges(notes)))));
         const res = summarize(changes, CFG.FLAG_UNAUTHORIZED === false ? {} : deployerSet());
-        res.noteRows = notes.length;
+        res.noteRows = notes.reduce((n, x) => n + (x.cnt === undefined ? 1 : x.cnt), 0);
         res.ms = Date.now() - t0;
         res.actors = Object.keys(changes.reduce((m, c) => (m[c.actor] = 1, m), {})).length;
         res.groups = groupByScript(changes);
         res.scripts = res.groups.filter(g => g.kind === 'script').length;
-        tbdllLog('run', fromYmd + '..' + toYmd + ' · systemnote ' + notes.length + ' แถว (' + (t1 - t0) + ' ms) · changes ' + res.total + ' · objects ' + res.objects +
+        tbdllLog('run', fromYmd + '..' + toYmd + ' · systemnote ' + res.noteRows + ' แถว (' + (t1 - t0) + ' ms) · changes ' + res.total + ' · objects ' + res.objects +
             ' · flagged ' + res.flagged + ' · รวม ' + res.ms + ' ms');
         return res;
     }
@@ -565,7 +651,7 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
         rectypes, rectypeWhere, typeOfNote, configWarnings, employeesWithRoles, deployerSet,
         fetchSystemNotes, groupChanges, attachObjectNames, attachActorNames, attachScriptInfo, probeRecordTypes, recordTypeLabel, daysBetween,
         suiteScriptFolderIds, fileIdsInScope, applyFileScope, autoDetectFileRectype,
-        summarize, run, toCsv, groupByScript, toGroupCsv,
+        summarize, run, finish, toCsv, groupByScript, toGroupCsv,
         log: tbdllLog
     };
 });

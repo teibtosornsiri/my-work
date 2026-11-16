@@ -68,6 +68,9 @@ define([], () => ({
     EMAIL_AUTHOR_ID: null,
     SNAPSHOT_FOLDER_ID: null,
 
+    /** เขตเวลาของผู้ใช้ ใช้คำนวณ "วันนี้" (server NetSuite อยู่ฝั่งอเมริกา) · ไทย = 7 · null = ใช้เวลา server */
+    TIMEZONE_OFFSET_HOURS: 7,
+
     THEME: 'tremor',
 
     /** ต้องตรงกับ Script ID / Deployment ID ที่สร้างจริง (ใช้ทำลิงก์ในอีเมล) */

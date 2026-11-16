@@ -20,18 +20,20 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
         }
 
         function readPeriod(p, todayDefault) {
-            const now = new Date();
-            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            // "วันนี้" ตามเวลาของผู้ใช้ (TIMEZONE_OFFSET_HOURS) ไม่ใช่เวลา server ของ NetSuite (ฝั่งอเมริกา)
+            const off = Number(CFG.TIMEZONE_OFFSET_HOURS);
+            const now = Number.isFinite(off) ? new Date(Date.now() + off * 3600e3) : new Date();
+            const today = Number.isFinite(off) ? new Date(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) : new Date(now.getFullYear(), now.getMonth(), now.getDate());
             const parse = (s, d) => {
                 if (!s) return d;
                 const iso = String(s).match(/^(\d{4})-(\d{2})-(\d{2})$/);
                 if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3]);
                 try { return format.parse({ value: s, type: format.Type.DATE }); } catch (e) { return d; }
             };
-                        const yesterday = new Date(today.getTime() - 864e5);
-            // probe = 7 วันล่าสุด · รายงาน = เมื่อวาน 1 วัน (เปิดหน้าเร็ว อยากได้ทั้งเดือนค่อยเลือกเอง)
-            const from = parse(p.f_from, todayDefault ? new Date(today.getTime() - 6 * 864e5) : yesterday);
-            const to = parse(p.f_to, todayDefault ? today : yesterday);
+            // probe = 7 วันล่าสุด · รายงาน = ต้นเดือนนี้ถึงวันนี้ (โหลดทีละวัน จึงเลือกทั้งเดือนได้)
+            const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+            const from = parse(p.f_from, todayDefault ? new Date(today.getTime() - 6 * 864e5) : monthStart);
+            const to = parse(p.f_to, today);
             return {
                 fromText: format.format({ value: from, type: format.Type.DATE }),
                 toText: format.format({ value: to, type: format.Type.DATE }),
@@ -54,7 +56,8 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
             });
         }
 
-        function buildReport(ui, per, res, ctx) {
+        /** ส่วนผลลัพธ์ (KPI, กราฟ, แท็บ) — server วาดหลัง browser ดึงครบทุกวันแล้ว */
+        function buildBody(ui, res) {
             const rows = res.changes.slice().reverse().map(c => Object.assign({}, c, {
                 object: c.objType + ': ' + c.objName,
                 fieldsText: c.fields.join(', '),
@@ -74,19 +77,7 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
                 { key: 'flagBadge', label: 'ธง', type: 'badge' }
             ];
 
-            return ui.render([
-                ui.header({
-                    crumb: 'IT Controls', crumbCurrent: 'Change Report',
-                    title: 'การเปลี่ยนแปลงใน PROD ' + per.fromText + ' – ' + per.toText,
-                    meta: 'System Notes ' + res.noteRows + ' แถว · Export CSV แล้วกรอกเลข CR ทุกแถว แถวที่ไม่มี CR ให้เขียนคำอธิบาย แล้วให้ผู้ review เซ็น',
-                    actions: [
-                        ui.button('Export CSV (ตาม Script)', { href: selfUrl({ f_from: per.fromYmd, f_to: per.toYmd, export: 'csvgroup' }), icon: 'download', kind: 'primary' }),
-                        ui.button('Export CSV (ทุก log)', { href: selfUrl({ f_from: per.fromYmd, f_to: per.toYmd, export: 'csv' }), icon: 'download', kind: 'ghost' }),
-                        ui.button('Probe record types', { href: selfUrl({ view: 'probe', f_from: per.fromYmd, f_to: per.toYmd }), kind: 'ghost' })
-                    ]
-                }),
-                ctx.warnings.map(w => ui.alert(w, 'warn')).join(''),
-                filterBar(ui, per, ctx),
+            return [
                 ui.kpis([
                     { label: 'การเปลี่ยนแปลง', value: ui.int(res.total), icon: 'doc' },
                     { label: 'Object ที่ถูกแก้', value: ui.int(res.objects), icon: 'doc' },
@@ -111,7 +102,7 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
                         id: 'all', label: 'ทั้งหมด', count: rows.length,
                         body: ui.table({
                             emptyTitle: 'ไม่พบการเปลี่ยนแปลง',
-                            emptyText: ctx.warnings.length ? 'ตรวจคำเตือนด้านบน (RECTYPE_MAP อาจยังไม่ได้ตั้ง)' : 'ไม่มี System Note ของ object ในขอบเขตช่วงนี้',
+                            emptyText: L.configWarnings().length ? 'ตรวจคำเตือนด้านบน (RECTYPE_MAP อาจยังไม่ได้ตั้ง)' : 'ไม่มี System Note ของ object ในขอบเขตช่วงนี้',
                             columns, rows
                         })
                     },
@@ -125,8 +116,74 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
                         })
                     }
                 ].filter(Boolean))
-            ]) + loadingOverlay(per);
+            ].join('');
         }
+
+        /**
+         * หน้าแรกของรายงาน: header + ตัวกรอง + แถบความคืบหน้า แล้ว browser ดึงทีละวันผ่าน &ajax=day
+         * ครบแล้วส่งรายการทั้งหมดไป &ajax=render (POST) ให้ server วาดผล — ทั้งเดือนไม่ชน timeout/governance
+         */
+        function buildShell(ui, per, ctx) {
+            const days = L.daysBetween(per.fromYmd, per.toYmd, 92);
+            const boot = { days, from: per.fromYmd, to: per.toYmd, ajaxUrl: selfUrl({}) };
+            const disabledBtn = (id, label, kind) => '<a id="' + id + '" class="btn ' + kind + '" style="opacity:.45;pointer-events:none" href="#">' + UI.esc(label) + '</a>';
+            const html = ui.render([
+                ui.header({
+                    crumb: 'IT Controls', crumbCurrent: 'Change Report',
+                    title: 'การเปลี่ยนแปลงใน PROD ' + per.fromText + ' – ' + per.toText + ' (' + days.length + ' วัน)',
+                    meta: 'Script · Script Deployment · ไฟล์โปรแกรมใต้ SuiteScripts · Export CSV แล้วกรอกเลข CR แถวที่ไม่มี CR ให้เขียนคำอธิบาย แล้วให้ผู้ review เซ็น',
+                    actions: [
+                        disabledBtn('tbdll-exp-grp', 'Export CSV (ตาม Script)', 'primary'),
+                        disabledBtn('tbdll-exp-all', 'Export CSV (ทุก log)', 'ghost'),
+                        ui.button('หยุด', { id: 'tbdll-stop', kind: 'ghost' }),
+                        ui.button('Probe record types', { href: selfUrl({ view: 'probe' }), kind: 'ghost' })
+                    ]
+                }),
+                ctx.warnings.map(w => ui.alert(w, 'warn')).join(''),
+                filterBar(ui, per, ctx),
+                ui.card({ title: 'ความคืบหน้า', body: '<div id="tbdll-status">กำลังเริ่ม…</div>'
+                    + '<div style="height:8px;border-radius:4px;background:#e5e7eb;overflow:hidden;margin-top:8px"><div id="tbdll-bar" style="height:100%;width:0;background:var(--primary,#2563eb);transition:width .2s"></div></div>'
+                    + '<div id="tbdll-log" style="margin-top:8px;font-size:12px;color:#6b7280;max-height:96px;overflow:auto"></div>' }),
+                '<div id="tbdll-res"></div>'
+            ]);
+            return html + '<script>window.TBDLL_REPORT=' + JSON.stringify(boot).replace(/</g, '\\u003c') + ';</script><script>' + REPORT_JS + '</script>' + loadingOverlay(per);
+        }
+
+        const REPORT_JS = [
+            '(function(){',
+            'var B=window.TBDLL_REPORT,stop=false,changes=[],noteRows=0,t0=Date.now(),cur="",waitFrom=0,tick=null,failed=[];',
+            'function $(id){return document.getElementById(id);}',
+            'function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;"}[c];});}',
+            'function sec(){return Math.round((Date.now()-t0)/1000);}',
+            'function status(t,pct){$("tbdll-status").innerHTML=t;if(pct!=null)$("tbdll-bar").style.width=pct+"%";}',
+            'function logl(t){var d=$("tbdll-log");d.innerHTML="<div>"+t+"</div>"+d.innerHTML;}',
+            'function getJSON(u,opt){return fetch(u,Object.assign({credentials:"same-origin"},opt||{})).then(function(r){return r.text();}).then(function(t){try{return JSON.parse(t);}catch(e){throw new Error("ตอบกลับไม่ใช่ JSON (session หมดหรือ script error)");}});}',
+            'tick=setInterval(function(){if(cur)status(cur+" · รอ server "+Math.round((Date.now()-waitFrom)/1000)+" วิ · รวม "+sec()+" วิ");},1000);',
+            'function bind(root){',
+            '  root.querySelectorAll("[data-tabs]").forEach(function(box){box.addEventListener("click",function(e){var t=e.target.closest(".tab");if(!t)return;',
+            '    box.querySelectorAll(".tab").forEach(function(x){x.setAttribute("aria-selected",x===t);});box.parentNode.querySelectorAll("[data-pane]").forEach(function(p){p.hidden=p.getAttribute("data-pane")!==t.getAttribute("data-tab");});});});',
+            '  root.querySelectorAll("input[data-filter-for]").forEach(function(inp){inp.addEventListener("keydown",function(e){if(e.key==="Enter")e.preventDefault();});inp.addEventListener("input",function(){var q=inp.value.trim().toLowerCase(),tb=document.getElementById(inp.getAttribute("data-filter-for"));',
+            '    if(!tb)return;tb.querySelectorAll("tbody tr").forEach(function(tr){tr.style.display=!q||tr.textContent.toLowerCase().indexOf(q)>=0?"":"none";});});});',
+            '  var gq=root.querySelector("#tbdll-gq");if(gq){gq.addEventListener("keydown",function(e){if(e.key==="Enter")e.preventDefault();});gq.addEventListener("input",function(){var q=gq.value.trim().toLowerCase(),n=0;',
+            '    root.querySelectorAll(".tbg").forEach(function(r){var ok=!q||r.getAttribute("data-q").indexOf(q)>=0;r.style.display=ok?"":"none";if(ok)n++;});var c=root.querySelector("#tbdll-gc");if(c)c.textContent=n+" กลุ่ม";});}}',
+            'function dl(id,name,text){var a=$(id);if(!a)return;a.href=URL.createObjectURL(new Blob([text],{type:"text/csv;charset=utf-8"}));a.download=name;a.style.opacity="";a.style.pointerEvents="";}',
+            'function render(partial){clearInterval(tick);cur="";status("ดึงครบแล้ว "+changes.length+" การเปลี่ยนแปลง · กำลังสรุปผล…",95);',
+            '  getJSON(B.ajaxUrl+"&ajax=render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({from:B.from,to:B.to,noteRows:noteRows,ms:Date.now()-t0,changes:changes})})',
+            '  .then(function(j){if(!j.ok)throw new Error(j.error||"render error");$("tbdll-res").innerHTML=j.html;bind($("tbdll-res"));',
+            '    dl("tbdll-exp-grp","prod_changes_by_script_"+B.from+"_"+B.to+".csv",j.csvGroup);dl("tbdll-exp-all","prod_changes_"+B.from+"_"+B.to+".csv",j.csvAll);',
+            '    var msg=(partial?"<b>ข้อมูลไม่ครบ</b> หยุดที่ "+partial+" · ":"เสร็จ · ")+B.days.length+" วัน · "+changes.length+" การเปลี่ยนแปลง · System Notes "+noteRows.toLocaleString()+" แถว · "+sec()+" วิ";',
+            '    if(failed.length)msg+=" · <b style=\\"color:#dc2626\\">ดึงไม่สำเร็จ "+failed.length+" วัน: "+failed.join(", ")+"</b>";status(msg,100);})',
+            '  .catch(function(e){status("สรุปผลไม่สำเร็จ: "+esc(e.message),100);});}',
+            'var i=0;',
+            'function next(){if(stop){render(B.days[i]||"");return;}if(i>=B.days.length){render("");return;}',
+            '  var d=B.days[i];cur="กำลังดึงวันที่ <b>"+d+"</b> ("+(i+1)+"/"+B.days.length+") · พบแล้ว "+changes.length+" การเปลี่ยนแปลง";waitFrom=Date.now();status(cur+" · รวม "+sec()+" วิ",i/B.days.length*90);',
+            '  var tries=0;(function go(){getJSON(B.ajaxUrl+"&ajax=day&day="+d).then(function(j){if(!j.ok)throw new Error(j.error||"error");',
+            '    Array.prototype.push.apply(changes,j.changes);noteRows+=j.noteRows||0;logl(d+": "+j.changes.length+" การเปลี่ยนแปลง, "+(j.ms/1000).toFixed(1)+" วิ");i++;next();})',
+            '    .catch(function(e){if(++tries<3){logl(d+": ลองใหม่ ("+esc(e.message)+")");go();}else{failed.push(d);logl("<b>"+d+": ข้าม</b> "+esc(e.message));i++;next();}});})();}',
+            '$("tbdll-stop").addEventListener("click",function(){stop=true;});',
+            'next();',
+            '})();'
+        ].join('\n');
 
         /**
          * ไดอะแกรมรวมตาม script: กล่อง script (ซ้าย) → สิ่งที่ถูกแก้ (ขวา) — ผู้ตรวจเห็นทีละ script ไม่ต้องไล่ทีละ log
@@ -341,6 +398,42 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
             ctx.response.writePage(form);
         }
 
+        /** ดึงการเปลี่ยนแปลงของวันเดียว → JSON (browser เรียกทีละวัน) */
+        function dayAjax(ctx, p) {
+            const day = String(p.day || '');
+            try {
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('day ต้องเป็น YYYY-MM-DD');
+                const t = Date.now();
+                const res = L.run(day, day);
+                const changes = res.changes.map(c => ({
+                    objType: c.objType, objId: c.objId, objName: c.objName, actor: c.actor, actorName: c.actorName, role: c.role, roleName: c.roleName,
+                    context: c.context, ts: c.ts, fields: c.fields, details: c.details || [], scripts: c.scripts || [], scriptText: c.scriptText || ''
+                }));
+                return json(ctx, { ok: true, day, changes, noteRows: res.noteRows, ms: Date.now() - t });
+            } catch (e) {
+                L.log('day ajax ' + day, e.message);
+                return json(ctx, { ok: false, error: e.message });
+            }
+        }
+
+        /** รับรายการที่ browser ดึงครบแล้ว (POST JSON) → วาด KPI/ไดอะแกรม/ตาราง + CSV สองแบบ */
+        function renderAjax(ctx, ui) {
+            try {
+                const body = JSON.parse(ctx.request.body || '{}');
+                const res = L.finish(body.changes || [], { noteRows: body.noteRows || 0, ms: body.ms || 0 });
+                L.log('render', (body.from || '') + '..' + (body.to || '') + ' · changes ' + res.total + ' · scripts ' + res.scripts + ' · browser ' + Math.round((body.ms || 0) / 1000) + ' s');
+                return json(ctx, {
+                    ok: true,
+                    html: buildBody(ui, res),
+                    csvGroup: L.toGroupCsv(body.from || '', body.to || '', res.groups),
+                    csvAll: L.toCsv(body.from || '', body.to || '', res)
+                });
+            } catch (e) {
+                L.log('render ajax', e.message + ' ' + (e.stack || ''));
+                return json(ctx, { ok: false, error: e.message });
+            }
+        }
+
         function onRequest(ctx) {
             const p = ctx.request.parameters;
             const ui = UI.create({ theme: p.theme || CFG.THEME, density: p.density });
@@ -362,18 +455,9 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
                     };
                     return page(ctx, buildProbe(ui, per, view, pf));
                 }
-                const res = L.run(per.fromYmd, per.toYmd);
-                if (p.export === 'csvgroup') {
-                    ctx.response.addHeader({ name: 'Content-Type', value: 'text/csv; charset=utf-8' });
-                    ctx.response.addHeader({ name: 'Content-Disposition', value: 'attachment; filename="prod_changes_by_script_' + per.fromYmd + '_' + per.toYmd + '.csv"' });
-                    return ctx.response.write(L.toGroupCsv(per.fromYmd, per.toYmd, res.groups));
-                }
-                if (p.export === 'csv') {
-                    ctx.response.addHeader({ name: 'Content-Type', value: 'text/csv; charset=utf-8' });
-                    ctx.response.addHeader({ name: 'Content-Disposition', value: 'attachment; filename="prod_changes_' + per.fromYmd + '_' + per.toYmd + '.csv"' });
-                    return ctx.response.write(L.toCsv(per.fromYmd, per.toYmd, res));
-                }
-                return page(ctx, buildReport(ui, per, res, view));
+                if (p.ajax === 'day') return dayAjax(ctx, p);
+                if (p.ajax === 'render') return renderAjax(ctx, ui);
+                return page(ctx, buildShell(ui, per, view));
             } catch (e) {
                 L.log('report error', e.message + ' ' + (e.stack || ''));
                 return page(ctx, ui.render([
