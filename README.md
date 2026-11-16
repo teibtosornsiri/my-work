@@ -10,6 +10,7 @@
 | [`batch-delete-saved-csv-import/`](batch-delete-saved-csv-import/) | Suitelet สำหรับลบ Saved CSV Import Template ทีละหลายตัว พร้อมตัวกรอง Owner / Record Type / ชื่อ |
 | [`batch-record-update/`](batch-record-update/) | Suitelet แก้ field หัวเอกสาร บรรทัด และ Inventory Detail ทีละหลาย record จาก CSV หรือ SuiteQL |
 | [`deployment-change-log/`](deployment-change-log/) | ITGC Change Management: Change Log ขออนุมัติก่อน deploy · รายงานกระทบยอด System Notes กับ CR (Exception E1–E6) · sign-off รายเดือน |
+| [`deployment-change-log-lite/`](deployment-change-log-lite/) | เวอร์ชันย่อไม่มี custom record: รายงานการเปลี่ยนแปลงใน PROD จาก System Notes + ติดธงผู้แก้ที่ไม่มีสิทธิ์ deploy + CSV กระทบยอดใน Excel |
 | [`tools/codecmp/`](tools/codecmp/) | สคริปต์ Python เทียบโค้ดสองโฟลเดอร์ (SB vs PROD) ได้ report.md · summary.json · diff |
 | [`doc-style/`](doc-style/) | สำนวนภาษาไทยสำหรับ User Guide ส่งลูกค้า · ชุดสร้าง User Guide .docx จาก Markdown |
 
