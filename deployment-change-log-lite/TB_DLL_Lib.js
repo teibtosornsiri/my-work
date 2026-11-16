@@ -49,23 +49,52 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
 
     // ---------- config ----------
 
+    /**
+     * แปลง RECTYPE_MAP เป็นเงื่อนไข
+     * ค่าแต่ละประเภทเป็นได้: ตัวเลข · array ตัวเลข · { rt: null, fieldPrefix: 'MEDIAITEM.' }
+     * (บางประเภท เช่น File, System Note มี recordtypeid = null ต้องแยกด้วย prefix ของ field แทน)
+     * คืน { toType: {rt: type}, all: [rt ตัวเลข], nullRules: [{prefix, type}] }
+     */
     function rectypes() {
-        const toType = {}, all = [];
+        const toType = {}, all = [], nullRules = [];
         Object.keys(CFG.RECTYPE_MAP).forEach(t => {
             const v = CFG.RECTYPE_MAP[t];
-            [].concat(v === null || v === undefined ? [] : v).forEach(x => {
+            [].concat(v === null || v === undefined || v === false ? [] : v).forEach(x => {
+                if (x === false || x === null || x === '' || x === undefined) return;
+                if (typeof x === 'object') {
+                    if ((x.rt === null || x.rt === undefined) && x.fieldPrefix) { nullRules.push({ prefix: String(x.fieldPrefix).toUpperCase(), type: t }); toType['null'] = toType['null'] ? toType['null'] + ' / ' + t : t; }
+                    else if (Number.isFinite(Number(x.rt))) { toType[String(Number(x.rt))] = t; all.push(Number(x.rt)); }
+                    return;
+                }
                 const n = Number(x);
                 if (Number.isFinite(n)) { toType[String(n)] = t; all.push(n); }
             });
         });
-        return { toType, all };
+        return { toType, all, nullRules };
+    }
+
+    /** เงื่อนไข WHERE ตาม RECTYPE_MAP → { sql, params } หรือ null ถ้ายังไม่ได้ตั้ง */
+    function rectypeWhere(rt) {
+        const parts = [], params = [];
+        if (rt.all.length) parts.push('sn.recordtypeid IN (' + rt.all.join(',') + ')');
+        rt.nullRules.forEach(r => { parts.push('(sn.recordtypeid IS NULL AND UPPER(sn.field) LIKE ?)'); params.push(r.prefix + '%'); });
+        return parts.length ? { sql: '(' + parts.join(' OR ') + ')', params } : null;
+    }
+
+    function typeOfNote(rt, recordtypeid, field) {
+        if (recordtypeid === null || recordtypeid === undefined || recordtypeid === '') {
+            const f = String(field || '').toUpperCase();
+            const hit = rt.nullRules.find(r => f.indexOf(r.prefix) === 0);
+            return hit ? hit.type : 'rectype null (' + (f.split('.')[0] || '-') + ')';
+        }
+        return rt.toType[String(recordtypeid)] || ('rectype ' + recordtypeid);
     }
 
     function configWarnings() {
         const w = [];
         const rt = rectypes();
         const missing = Object.keys(CFG.RECTYPE_MAP).filter(t => CFG.RECTYPE_MAP[t] === null || CFG.RECTYPE_MAP[t] === undefined);
-        if (!rt.all.length) w.push('ยังไม่ได้ตั้ง RECTYPE_MAP ใน TB_DLL_Config — รายงานยังไม่เห็นการเปลี่ยนแปลง เปิด &view=probe เพื่อหาค่า');
+        if (!rt.all.length && !rt.nullRules.length) w.push('ยังไม่ได้ตั้ง RECTYPE_MAP ใน TB_DLL_Config — รายงานยังไม่เห็นการเปลี่ยนแปลง เปิด &view=probe เพื่อหาค่า');
         else if (missing.length) w.push('ยังไม่ได้ map recordtypeid ของ: ' + missing.join(', ') + ' — การเปลี่ยนแปลงของประเภทนี้ไม่อยู่ในรายงาน');
         if (!CFG.DEPLOYER_ROLE_IDS.length && !CFG.DEPLOYER_EMPLOYEE_IDS.length) w.push('ยังไม่ได้ตั้งผู้มีสิทธิ์ deploy — ระบบติดธง "ผู้แก้ไม่มีสิทธิ์" ไม่ได้');
         return w;
@@ -98,20 +127,22 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
 
     function fetchSystemNotes(fromYmd, toYmd) {
         const rt = rectypes();
-        if (!rt.all.length) return [];
-        const where = "sn.date >= TO_DATE(?, 'YYYY-MM-DD') AND sn.date < TO_DATE(?, 'YYYY-MM-DD') + 1 AND sn.recordtypeid IN (" + rt.all.join(',') + ')';
+        const rw = rectypeWhere(rt);
+        if (!rw) return [];
+        const where = "sn.date >= TO_DATE(?, 'YYYY-MM-DD') AND sn.date < TO_DATE(?, 'YYYY-MM-DD') + 1 AND " + rw.sql;
+        const qp = [fromYmd, toYmd].concat(rw.params);
         const full = 'SELECT sn.id, sn.recordid, sn.recordtypeid, sn.field, sn.context, sn.type, sn.oldvalue, sn.newvalue, sn.name AS actor, BUILTIN.DF(sn.name) AS actorname, ' +
             "sn.role, BUILTIN.DF(sn.role) AS rolename, TO_CHAR(sn.date, 'YYYY-MM-DD HH24:MI:SS') AS ts FROM systemnote sn WHERE " + where + ' ORDER BY sn.date';
         const minimal = 'SELECT sn.id, sn.recordid, sn.recordtypeid, sn.field, sn.context, sn.name AS actor, ' +
             "TO_CHAR(sn.date, 'YYYY-MM-DD HH24:MI:SS') AS ts FROM systemnote sn WHERE " + where + ' ORDER BY sn.date';
         let rows;
-        try { rows = runAll(full, [fromYmd, toYmd]); } catch (e) {
+        try { rows = runAll(full, qp); } catch (e) {
             tbdllLog('systemnote full query failed, retry minimal', e.message);
-            rows = runAll(minimal, [fromYmd, toYmd]);
+            rows = runAll(minimal, qp);
         }
         const skip = (CFG.EXCLUDE_CONTEXTS || []).map(String);
         return rows.filter(r => skip.indexOf(String(r.context || '')) < 0).map(r => ({
-            objType: rt.toType[String(r.recordtypeid)] || ('rectype ' + r.recordtypeid),
+            objType: typeOfNote(rt, r.recordtypeid, r.field),
             objId: String(r.recordid),
             field: r.field || '',
             oldValue: r.oldvalue === null || r.oldvalue === undefined ? '' : String(r.oldvalue),
@@ -344,7 +375,7 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
 
     return {
         CFG, runAll, chunk, ids, parseTs, fmtTs, ymd,
-        rectypes, configWarnings, employeesWithRoles, deployerSet,
+        rectypes, rectypeWhere, typeOfNote, configWarnings, employeesWithRoles, deployerSet,
         fetchSystemNotes, groupChanges, attachObjectNames, probeRecordTypes, recordTypeLabel, daysBetween,
         suiteScriptFolderIds, fileIdsInScope, applyFileScope, autoDetectFileRectype,
         summarize, run, toCsv,

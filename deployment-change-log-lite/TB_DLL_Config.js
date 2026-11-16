@@ -11,7 +11,11 @@ define([], () => ({
     /**
      * ประเภท object → recordtypeid ใน SuiteQL `systemnote`
      * ยังไม่รู้ค่า: เปิดรายงานด้วย &view=probe (ดู README)
-     * ใส่เป็นตัวเลขหรือ array ก็ได้ เช่น 'Script': [-417, -418]
+     *   ตัวเลข หรือ array        เช่น 'Script': [-417]
+     *   { rt: null, fieldPrefix } สำหรับประเภทที่ recordtypeid เป็น null เช่น File = { rt: null, fieldPrefix: 'MEDIAITEM.' }
+     *   false                    = ตั้งใจไม่ติดตามประเภทนี้ (ไม่ขึ้นคำเตือน)
+     *   null                     = ยังไม่ได้หาค่า (ขึ้นคำเตือน)
+     * ค่าที่พบจริงในบัญชีหนึ่ง (11/2026): Script (Suitelet) -417 · Script Deployment -418 · File null + MEDIAITEM.
      */
     RECTYPE_MAP: {
         'Script': null,
