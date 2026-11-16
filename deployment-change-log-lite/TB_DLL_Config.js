@@ -30,7 +30,13 @@ define([], () => ({
         'Template': null
     },
 
-    /** ผู้มีสิทธิ์ deploy ขึ้น PROD — คนอื่นแก้ = ติดธง */
+    /**
+     * ติดธงแดงเมื่อผู้แก้ไม่อยู่ในรายชื่อผู้มีสิทธิ์ deploy
+     * false = ยังไม่ได้วางเรื่อง role — ทุกคนที่แก้ได้ถือว่าปกติ (ธงเขียว) และไม่ขึ้นคำเตือน
+     */
+    FLAG_UNAUTHORIZED: false,
+
+    /** ผู้มีสิทธิ์ deploy ขึ้น PROD — ใช้เมื่อ FLAG_UNAUTHORIZED = true */
     DEPLOYER_ROLE_IDS: [],
     DEPLOYER_EMPLOYEE_IDS: [],
 
@@ -44,6 +50,12 @@ define([], () => ({
      *   'all'          = ทุกไฟล์ใน File Cabinet
      */
     FILE_SCOPE: 'suitescripts',
+
+    /**
+     * นับเฉพาะไฟล์โปรแกรม (ดูจากนามสกุล) — .doc รูป .pdf .csv ไม่นับ
+     * .json ไม่ใส่เป็นค่าเริ่มต้น เพราะ script มักเขียนไฟล์ข้อมูล .json ลง SuiteScripts เอง · [] = นับทุกนามสกุล
+     */
+    CODE_FILE_EXTENSIONS: ['js', 'html', 'htm', 'xml', 'css', 'scss', 'ftl', 'ts'],
 
     /** internal id ของโฟลเดอร์ SuiteScripts (มาตรฐาน NetSuite = -15) */
     SUITESCRIPTS_FOLDER_ID: -15,

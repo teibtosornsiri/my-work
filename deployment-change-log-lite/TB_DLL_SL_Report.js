@@ -28,9 +28,10 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
                 if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3]);
                 try { return format.parse({ value: s, type: format.Type.DATE }); } catch (e) { return d; }
             };
-            // probe ค่าเริ่มต้น = 7 วันล่าสุด · รายงาน = เดือนก่อน
-            const from = parse(p.f_from, todayDefault ? new Date(today.getTime() - 6 * 864e5) : new Date(now.getFullYear(), now.getMonth() - 1, 1));
-            const to = parse(p.f_to, todayDefault ? today : new Date(now.getFullYear(), now.getMonth(), 0));
+                        const yesterday = new Date(today.getTime() - 864e5);
+            // probe = 7 วันล่าสุด · รายงาน = เมื่อวาน 1 วัน (เปิดหน้าเร็ว อยากได้ทั้งเดือนค่อยเลือกเอง)
+            const from = parse(p.f_from, todayDefault ? new Date(today.getTime() - 6 * 864e5) : yesterday);
+            const to = parse(p.f_to, todayDefault ? today : yesterday);
             return {
                 fromText: format.format({ value: from, type: format.Type.DATE }),
                 toText: format.format({ value: to, type: format.Type.DATE }),
@@ -61,10 +62,12 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
                 detailText: c.details.join(' | ')
             }));
             const flaggedRows = rows.filter(r => r.flag);
+            const flagOn = CFG.FLAG_UNAUTHORIZED !== false;
             const priv = L.employeesWithRoles(CFG.PRIVILEGED_ROLE_IDS.concat(CFG.DEPLOYER_ROLE_IDS));
             const columns = [
                 { key: 'tsText', label: 'เวลา', type: 'date' },
                 { key: 'object', label: 'Object', type: 'wrap', sub: 'fieldsText' },
+                { key: 'scriptText', label: 'Script (ID · ชื่อ · ประเภท · deploy บน)', type: 'wrap' },
                 { key: 'actorName', label: 'ผู้แก้', sub: 'roleName' },
                 { key: 'context', label: 'Context' },
                 { key: 'detailText', label: 'ค่าเดิม → ใหม่ (ตัวอย่าง)', type: 'wrap' },
@@ -86,14 +89,16 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
                 ui.kpis([
                     { label: 'การเปลี่ยนแปลง', value: ui.int(res.total), icon: 'doc' },
                     { label: 'Object ที่ถูกแก้', value: ui.int(res.objects), icon: 'doc' },
-                    { label: 'ผู้แก้ไม่มีสิทธิ์ deploy', value: ui.int(res.flagged), bad: res.flagged > 0, note: res.flagged ? 'ต้องมีคำอธิบายทุกแถว' : '' }
+                    flagOn
+                        ? { label: 'ผู้แก้ไม่มีสิทธิ์ deploy', value: ui.int(res.flagged), bad: res.flagged > 0, note: res.flagged ? 'ต้องมีคำอธิบายทุกแถว' : '' }
+                        : { label: 'ผู้แก้ (คน)', value: ui.int(res.actors || 0), icon: 'doc', note: 'ใช้เวลาดึง ' + ((res.ms || 0) / 1000).toFixed(1) + ' วิ' }
                 ]),
                 res.total ? ui.grid([
                     ui.card({ title: 'ตามประเภท object', body: ui.barList(res.byType.slice(0, 8)) }),
                     ui.card({ title: 'ตามผู้แก้', body: ui.barList(res.byActor.slice(0, 8)) })
                 ]) : '',
                 ui.tabs([
-                    {
+                    flagOn && {
                         id: 'flag', label: 'ติดธง', count: flaggedRows.length,
                         body: ui.table({ emptyTitle: 'ไม่มีรายการติดธง', emptyText: 'ทุกการเปลี่ยนแปลงทำโดยผู้มีสิทธิ์ deploy', columns, rows: flaggedRows })
                     },
@@ -114,8 +119,29 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
                             rows: priv
                         })
                     }
-                ])
-            ]);
+                ].filter(Boolean))
+            ]) + loadingOverlay(per);
+        }
+
+        /**
+         * overlay ตอนกด "แสดงรายงาน" — หน้าเดิมยังอยู่จนกว่า server จะส่งหน้าใหม่ จึงต้องบอกว่ากำลังโหลด
+         * (ฟังคลิกปุ่มของ filterBar และ Enter ในช่องกรอก ซึ่ง Lib_Report_UI ใช้ navigate แบบ GET)
+         */
+        function loadingOverlay(per) {
+            return '<div id="tbdll-load" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(255,255,255,.75);backdrop-filter:blur(2px);align-items:center;justify-content:center">'
+                + '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:24px 32px;box-shadow:0 10px 30px rgba(0,0,0,.12);text-align:center;font:14px/1.6 inherit;min-width:320px">'
+                + '<div style="width:36px;height:36px;margin:0 auto 12px;border:3px solid #e5e7eb;border-top-color:#2563eb;border-radius:50%;animation:tbdllspin 1s linear infinite"></div>'
+                + '<b>กำลังดึง System Notes…</b><div id="tbdll-load-range" style="color:#6b7280"></div>'
+                + '<div id="tbdll-load-sec" style="margin-top:6px;font-variant-numeric:tabular-nums">0 วินาที</div>'
+                + '<div style="margin-top:8px;font-size:12px;color:#6b7280">1 วันใช้ไม่กี่วินาที · ทั้งเดือนอาจใช้ 1–3 นาที</div></div></div>'
+                + '<style>@keyframes tbdllspin{to{transform:rotate(360deg)}}</style>'
+                + '<script>(function(){var box=document.getElementById("tbdll-load");if(!box)return;var t;'
+                + 'function show(){var f=document.getElementById("f_from"),g=document.getElementById("f_to");'
+                + 'document.getElementById("tbdll-load-range").textContent=(f?f.value:"")+" – "+(g?g.value:"");box.style.display="flex";var s=0;clearInterval(t);'
+                + 't=setInterval(function(){s++;document.getElementById("tbdll-load-sec").textContent=s+" วินาที";},1000);}'
+                + 'document.addEventListener("click",function(e){var b=e.target.closest&&e.target.closest("[data-get-submit]");if(b)show();},true);'
+                + 'document.addEventListener("keydown",function(e){if(e.key==="Enter"&&e.target.closest&&e.target.closest(".fbar"))show();},true);'
+                + 'window.addEventListener("pageshow",function(){box.style.display="none";clearInterval(t);});})();</script>';
         }
 
         /**

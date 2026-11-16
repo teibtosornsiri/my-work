@@ -96,7 +96,7 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
         const missing = Object.keys(CFG.RECTYPE_MAP).filter(t => CFG.RECTYPE_MAP[t] === null || CFG.RECTYPE_MAP[t] === undefined);
         if (!rt.all.length && !rt.nullRules.length) w.push('ยังไม่ได้ตั้ง RECTYPE_MAP ใน TB_DLL_Config — รายงานยังไม่เห็นการเปลี่ยนแปลง เปิด &view=probe เพื่อหาค่า');
         else if (missing.length) w.push('ยังไม่ได้ map recordtypeid ของ: ' + missing.join(', ') + ' — การเปลี่ยนแปลงของประเภทนี้ไม่อยู่ในรายงาน');
-        if (!CFG.DEPLOYER_ROLE_IDS.length && !CFG.DEPLOYER_EMPLOYEE_IDS.length) w.push('ยังไม่ได้ตั้งผู้มีสิทธิ์ deploy — ระบบติดธง "ผู้แก้ไม่มีสิทธิ์" ไม่ได้');
+        if (CFG.FLAG_UNAUTHORIZED !== false && !CFG.DEPLOYER_ROLE_IDS.length && !CFG.DEPLOYER_EMPLOYEE_IDS.length) w.push('ยังไม่ได้ตั้งผู้มีสิทธิ์ deploy — ระบบติดธง "ผู้แก้ไม่มีสิทธิ์" ไม่ได้');
         return w;
     }
 
@@ -107,9 +107,13 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
         if (!r.length) return [];
         try {
             return runAll(
-                'SELECT er.entity AS id, BUILTIN.DF(er.entity) AS name, er.role AS role, BUILTIN.DF(er.role) AS rolename ' +
+                'SELECT er.entity AS id, e.entityid AS code, e.firstname, e.lastname, er.role AS role, BUILTIN.DF(er.role) AS rolename ' +
                 'FROM employeerolesforsearch er JOIN employee e ON e.id = er.entity ' +
-                "WHERE e.isinactive = 'F' AND e.giveaccess = 'T' AND er.role IN (" + r.join(',') + ') ORDER BY name');
+                "WHERE e.isinactive = 'F' AND e.giveaccess = 'T' AND er.role IN (" + r.join(',') + ') ORDER BY e.firstname, e.lastname')
+                .map(x => {
+                    const full = [x.firstname, x.lastname].filter(Boolean).join(' ').trim();
+                    return Object.assign(x, { name: full ? full + (x.code ? ' (' + x.code + ')' : '') : (x.code || '#' + x.id) });
+                });
         } catch (e) {
             tbdllLog('employeesWithRoles failed', e.message);
             return [];
@@ -199,6 +203,105 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
         return changes;
     }
 
+    const SCRIPT_TYPE = {
+        USEREVENT: 'User Event', CLIENT: 'Client Script', SCRIPTLET: 'Suitelet', SUITELET: 'Suitelet', RESTLET: 'RESTlet',
+        MAPREDUCE: 'Map/Reduce', SCHEDULED: 'Scheduled', MASSUPDATE: 'Mass Update', PORTLET: 'Portlet',
+        WORKFLOWACTION: 'Workflow Action', ACTION: 'Workflow Action', BUNDLEINSTALLATION: 'Bundle Installation',
+        SDFINSTALLATION: 'SDF Installation', PLUGINTYPEIMPL: 'Plug-in', CUSTOMGLLINES: 'Custom GL Plug-in'
+    };
+    /** UE / CS / Workflow Action ผูกกับ record → บอกว่า deploy บน record ไหน */
+    const RECORD_BOUND = ['User Event', 'Client Script', 'Workflow Action'];
+
+    /**
+     * ข้อมูล script ของแต่ละการเปลี่ยนแปลง (Script ID, ชื่อ, ประเภท, deploy บน record ไหน)
+     *   File              → script ที่ใช้ไฟล์นี้เป็น Script File
+     *   Script            → script ตัวนั้น
+     *   Script Deployment → script แม่ของ deployment + record ของ deployment นั้น
+     * ตาราง scriptdeployment ไม่อยู่ใน catalog ของทุกบัญชี — query ไม่ได้ก็ข้ามเงียบ ๆ (ได้แค่ข้อมูล script)
+     */
+    function attachScriptInfo(changes) {
+        const uniq = a => a.filter((x, i, arr) => x && arr.indexOf(x) === i);
+        const fileIds = ids(uniq(changes.filter(c => c.objType === 'File').map(c => c.objId)));
+        const deployIds = ids(uniq(changes.filter(c => c.objType === 'Script Deployment').map(c => c.objId)));
+        let scriptIds = ids(uniq(changes.filter(c => c.objType === 'Script').map(c => c.objId)));
+
+        // deployment ที่ถูกแก้ → script แม่
+        const deployById = {};
+        const deploySql = cols => 'SELECT ' + cols + ' FROM scriptdeployment WHERE ';
+        const DEP_FULL = 'primarykey AS id, script, scriptid, title, recordtype, isdeployed';
+        const DEP_MIN = 'primarykey AS id, script, scriptid, title';
+        let depCols = DEP_FULL, depOk = true;
+        const runDep = where => {
+            if (!depOk) return [];
+            try { return runAll(deploySql(depCols) + where); } catch (e) {
+                if (depCols === DEP_FULL) { depCols = DEP_MIN; try { return runAll(deploySql(depCols) + where); } catch (e2) { /* ไปข้างล่าง */ } }
+                depOk = false; tbdllLog('scriptdeployment query failed', e.message); return [];
+            }
+        };
+        chunk(deployIds, 200).forEach(part => runDep('primarykey IN (' + part.join(',') + ')').forEach(d => { deployById[String(d.id)] = d; if (d.script) scriptIds.push(Number(d.script)); }));
+        scriptIds = uniq(scriptIds.map(String)).map(Number);
+
+        // script จาก id และจาก script file
+        const scripts = {}, byFile = {};
+        const take = r => {
+            const s = scripts[String(r.id)] = { id: String(r.id), scriptid: r.scriptid || '', name: r.name || '', type: SCRIPT_TYPE[String(r.scripttype || '').toUpperCase()] || String(r.scripttype || ''), deployedOn: [] };
+            if (r.scriptfile) (byFile[String(r.scriptfile)] = byFile[String(r.scriptfile)] || []).push(s);
+        };
+        try {
+            chunk(scriptIds, 200).forEach(part => runAll('SELECT id, scriptid, name, scripttype, scriptfile FROM script WHERE id IN (' + part.join(',') + ')').forEach(take));
+            chunk(fileIds, 200).forEach(part => runAll('SELECT id, scriptid, name, scripttype, scriptfile FROM script WHERE scriptfile IN (' + part.join(',') + ')').forEach(r => { if (!scripts[String(r.id)]) take(r); }));
+        } catch (e) { tbdllLog('script query failed', e.message); }
+
+        // record ที่ UE / CS deploy อยู่ (เฉพาะ deployment ที่ deployed)
+        const boundIds = Object.keys(scripts).filter(k => RECORD_BOUND.indexOf(scripts[k].type) >= 0).map(Number);
+        if (depCols === DEP_FULL) {
+            chunk(boundIds, 200).forEach(part => runDep('script IN (' + part.join(',') + ')').forEach(d => {
+                const s = scripts[String(d.script)];
+                if (!s || d.isdeployed === 'F' || !d.recordtype) return;
+                const rt = String(d.recordtype);
+                if (s.deployedOn.indexOf(rt) < 0) s.deployedOn.push(rt);
+            }));
+        }
+
+        const fmt = s => [s.scriptid, s.name, s.type].filter(Boolean).join(' · ') + (s.deployedOn.length ? ' · deploy บน ' + s.deployedOn.join(', ') : '');
+        changes.forEach(c => {
+            let list = [];
+            if (c.objType === 'File') list = byFile[c.objId] || [];
+            else if (c.objType === 'Script' && scripts[c.objId]) list = [scripts[c.objId]];
+            else if (c.objType === 'Script Deployment') {
+                const d = deployById[c.objId];
+                if (d) {
+                    c.objName = (d.title || d.scriptid || c.objName) + (d.scriptid && d.title ? ' (' + d.scriptid + ')' : '');
+                    const s = scripts[String(d.script)];
+                    if (s) list = [Object.assign({}, s, { deployedOn: d.recordtype ? [String(d.recordtype)] : [] })];
+                }
+            }
+            c.scripts = list;
+            c.scriptText = list.map(fmt).join(' | ');
+        });
+        return changes;
+    }
+
+    /**
+     * ชื่อผู้แก้: BUILTIN.DF ของ employee คืนแค่รหัส (entityid เช่น E-000008) → ดึงชื่อจากตาราง entity
+     * แสดงเป็น "ชื่อ นามสกุล (รหัส)" ถ้ามีชื่อ
+     */
+    function attachActorNames(changes) {
+        const list = ids(changes.map(c => c.actor).filter((x, i, a) => x && a.indexOf(x) === i));
+        const names = {};
+        chunk(list, 200).forEach(part => {
+            try {
+                tbdllQuery.runSuiteQL({ query: 'SELECT id, entityid, altname, firstname, lastname FROM entity WHERE id IN (' + part.join(',') + ')' }).asMappedResults().forEach(r => {
+                    const full = [r.firstname, r.lastname].filter(Boolean).join(' ').trim() || String(r.altname || '').trim();
+                    const code = String(r.entityid || '').trim();
+                    names[String(r.id)] = full && full !== code ? full + (code ? ' (' + code + ')' : '') : (code || '#' + r.id);
+                });
+            } catch (e) { tbdllLog('attachActorNames', e.message); }
+        });
+        changes.forEach(c => { if (names[c.actor]) c.actorName = names[c.actor]; });
+        return changes;
+    }
+
     /**
      * โหมด probe: recordtypeid ที่มีการเปลี่ยนแปลง — ใช้ตั้ง RECTYPE_MAP
      * systemnote ทั้งบัญชีใหญ่มาก (รวม transaction) จึงต้องกรองแคบเสมอ:
@@ -262,18 +365,34 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
     }
 
     /** id ของไฟล์ที่อยู่ในขอบเขต FILE_SCOPE จากรายการ id ที่ให้มา → set (string) · 'all' = คืน null (ไม่กรอง) */
+    /** นามสกุลไฟล์ (ตัวเล็ก) ผ่านเกณฑ์ CODE_FILE_EXTENSIONS ไหม */
+    function isCodeFile(name) {
+        const exts = (CFG.CODE_FILE_EXTENSIONS || []).map(e => String(e).replace(/^\./, '').toLowerCase());
+        if (!exts.length) return true;
+        const m = String(name || '').toLowerCase().match(/\.([a-z0-9]+)$/);
+        return !!m && exts.indexOf(m[1]) >= 0;
+    }
+
     function fileIdsInScope(fileIds) {
         const scope = CFG.FILE_SCOPE || 'suitescripts';
-        if (scope === 'all' || !fileIds.length) return null;
+        const byExt = (CFG.CODE_FILE_EXTENSIONS || []).length > 0;
+        if ((scope === 'all' && !byExt) || !fileIds.length) return null;
         const keep = {};
+        const scriptFiles = {};
         if (scope === 'scriptfile') {
             chunk(ids(fileIds), 200).forEach(part => runAll('SELECT DISTINCT scriptfile FROM script WHERE scriptfile IN (' + part.join(',') + ')')
-                .forEach(r => { keep[String(r.scriptfile)] = true; }));
-            return keep;
+                .forEach(r => { scriptFiles[String(r.scriptfile)] = true; }));
         }
-        const folders = suiteScriptFolderIds();
-        chunk(ids(fileIds), 200).forEach(part => runAll('SELECT id, folder FROM file WHERE id IN (' + part.join(',') + ')')
-            .forEach(r => { if (folders[String(r.folder)]) keep[String(r.id)] = true; }));
+        const folders = scope === 'suitescripts' ? suiteScriptFolderIds() : null;
+        // id ที่ไม่อยู่ในตาราง file (เช่น folder ซึ่ง System Note ก็ขึ้น MEDIAITEM.) จะไม่ถูกเก็บ
+        chunk(ids(fileIds), 200).forEach(part => runAll('SELECT id, name, folder FROM file WHERE id IN (' + part.join(',') + ')')
+            .forEach(r => {
+                const id = String(r.id);
+                if (scope === 'scriptfile' && !scriptFiles[id]) return;
+                if (folders && !folders[String(r.folder)]) return;
+                if (!isCodeFile(r.name)) return;
+                keep[id] = true;
+            }));
         return keep;
     }
 
@@ -339,7 +458,7 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
      * @param {Object} deployers set ของ employee id ที่มีสิทธิ์ deploy ({} = ไม่ได้ตั้ง → ไม่ติดธง)
      */
     function summarize(changes, deployers) {
-        const hasList = Object.keys(deployers || {}).length > 0;
+        const hasList = CFG.FLAG_UNAUTHORIZED !== false && Object.keys(deployers || {}).length > 0;
         const byType = {}, byActor = {};
         let flagged = 0;
         changes.forEach(c => {
@@ -354,29 +473,36 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
     }
 
     function run(fromYmd, toYmd) {
+        const t0 = Date.now();
         const notes = fetchSystemNotes(fromYmd, toYmd);
-        const res = summarize(attachObjectNames(applyFileScope(groupChanges(notes))), deployerSet());
+        const t1 = Date.now();
+        const changes = attachScriptInfo(attachActorNames(attachObjectNames(applyFileScope(groupChanges(notes)))));
+        const res = summarize(changes, CFG.FLAG_UNAUTHORIZED === false ? {} : deployerSet());
         res.noteRows = notes.length;
+        res.ms = Date.now() - t0;
+        res.actors = Object.keys(changes.reduce((m, c) => (m[c.actor] = 1, m), {})).length;
+        tbdllLog('run', fromYmd + '..' + toYmd + ' · systemnote ' + notes.length + ' แถว (' + (t1 - t0) + ' ms) · changes ' + res.total + ' · objects ' + res.objects +
+            ' · flagged ' + res.flagged + ' · รวม ' + res.ms + ' ms');
         return res;
     }
 
     /** CSV สำหรับกระทบยอดใน Excel — 3 คอลัมน์ท้ายให้ IT / ผู้ review กรอก */
     function toCsv(fromYmd, toYmd, res) {
         const q = v => '"' + String(v === null || v === undefined ? '' : v).replace(/"/g, '""') + '"';
-        const head = ['Changed At', 'Object Type', 'Object', 'Object ID', 'Changed By', 'Role', 'Context', 'Fields', 'Old → New (ตัวอย่าง)', 'Flag',
+        const head = ['Changed At', 'Object Type', 'Object', 'Object ID', 'Script (ID · ชื่อ · ประเภท · deploy บน)', 'Changed By', 'Role', 'Context', 'Fields', 'Old → New (ตัวอย่าง)', 'Flag',
             'CR No.', 'คำอธิบาย (กรณีไม่มี CR)', 'ผู้ตรวจ / วันที่'];
         const lines = [
             ['Period', fromYmd + ' to ' + toYmd, 'Changes', res.total, 'Flagged', res.flagged].map(q).join(','),
             head.map(q).join(',')
         ];
-        res.changes.forEach(c => lines.push([c.tsText, c.objType, c.objName, c.objId, c.actorName, c.roleName, c.context, c.fields.join(' '), c.details.join(' | '), c.flag, '', '', ''].map(q).join(',')));
+        res.changes.forEach(c => lines.push([c.tsText, c.objType, c.objName, c.objId, c.scriptText || '', c.actorName, c.roleName, c.context, c.fields.join(' '), c.details.join(' | '), c.flag, '', '', ''].map(q).join(',')));
         return '﻿' + lines.join('\r\n');
     }
 
     return {
         CFG, runAll, chunk, ids, parseTs, fmtTs, ymd,
         rectypes, rectypeWhere, typeOfNote, configWarnings, employeesWithRoles, deployerSet,
-        fetchSystemNotes, groupChanges, attachObjectNames, probeRecordTypes, recordTypeLabel, daysBetween,
+        fetchSystemNotes, groupChanges, attachObjectNames, attachActorNames, attachScriptInfo, probeRecordTypes, recordTypeLabel, daysBetween,
         suiteScriptFolderIds, fileIdsInScope, applyFileScope, autoDetectFileRectype,
         summarize, run, toCsv,
         log: tbdllLog
