@@ -472,6 +472,65 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
         return { changes, total: changes.length, flagged, objects: Object.keys(changes.reduce((m, c) => (m[c.objType + '|' + c.objId] = 1, m), {})).length, byType: top(byType), byActor: top(byActor) };
     }
 
+    /**
+     * รวมการเปลี่ยนแปลงตาม script (pure) — สำหรับมุมมองผู้ตรวจ ไม่แตกทีละ log
+     * แต่ละกลุ่ม = script หนึ่งตัว มีลูกเป็นสิ่งที่ถูกแก้: Script record / Deployment แต่ละตัว / File แต่ละไฟล์
+     * File ที่ไม่ใช่ Script File ของ script ไหน → กลุ่ม "ไฟล์อื่น" · object ที่ไม่รู้ script → กลุ่ม "ไม่ทราบ script"
+     */
+    function groupByScript(changes) {
+        const groups = {};
+        const touch = (o, c) => {
+            o.count++;
+            if (c.actorName && o.editors.indexOf(c.actorName) < 0) o.editors.push(c.actorName);
+            if (c.ts !== null && c.ts !== undefined) { o.first = o.first === null ? c.ts : Math.min(o.first, c.ts); o.last = o.last === null ? c.ts : Math.max(o.last, c.ts); }
+        };
+        const newNode = (kind, label, sub) => ({ kind, label, sub: sub || '', count: 0, editors: [], first: null, last: null });
+        const group = (key, info) => groups[key] || (groups[key] = Object.assign({ key, children: {}, editors: [], count: 0, first: null, last: null, deployedOn: [] }, info));
+        const addDeployedOn = (g, list) => (list || []).forEach(r => { if (g.deployedOn.indexOf(r) < 0) g.deployedOn.push(r); });
+
+        changes.forEach(c => {
+            const scripts = c.scripts || [];
+            let targets;
+            if (scripts.length) {
+                targets = scripts.map(s => {
+                    const g = group('s:' + s.id, { kind: 'script', scriptId: s.id, scriptid: s.scriptid, name: s.name, type: s.type });
+                    addDeployedOn(g, s.deployedOn);
+                    return g;
+                });
+            } else if (c.objType === 'File') {
+                targets = [group('files', { kind: 'files', name: 'ไฟล์ที่ไม่ใช่ Script File ของ script ไหน', type: 'lib / HTML / template' })];
+            } else {
+                targets = [group('unknown', { kind: 'unknown', name: 'ไม่ทราบ script', type: c.objType })];
+            }
+            const nodeKey = c.objType + '|' + c.objId;
+            const label = c.objType === 'Script' ? 'Script record' : c.objType === 'Script Deployment' ? 'Deployment: ' + c.objName : c.objName;
+            const sub = c.objType === 'Script Deployment' && scripts[0] && scripts[0].deployedOn && scripts[0].deployedOn.length ? 'บน ' + scripts[0].deployedOn.join(', ') : c.objType === 'File' ? 'File #' + c.objId : '';
+            targets.forEach(g => {
+                const n = g.children[nodeKey] || (g.children[nodeKey] = newNode(c.objType, label, sub));
+                touch(n, c);
+                touch(g, c);
+            });
+        });
+
+        const order = { 'Script': 0, 'Script Deployment': 1, 'File': 2 };
+        return Object.keys(groups).map(k => {
+            const g = groups[k];
+            g.children = Object.keys(g.children).map(x => g.children[x]).sort((a, b) => (a.kind in order ? order[a.kind] : 9) - (b.kind in order ? order[b.kind] : 9) || (b.last || 0) - (a.last || 0));
+            g.firstText = fmtTs(g.first); g.lastText = fmtTs(g.last);
+            g.children.forEach(n => { n.firstText = fmtTs(n.first); n.lastText = fmtTs(n.last); });
+            return g;
+        }).sort((a, b) => (a.kind === 'script' ? 0 : 1) - (b.kind === 'script' ? 0 : 1) || (b.last || 0) - (a.last || 0));
+    }
+
+    /** CSV แบบรวมตาม script — 1 แถวต่อสิ่งที่ถูกแก้ พร้อมช่องให้กรอก CR */
+    function toGroupCsv(fromYmd, toYmd, groups) {
+        const q = v => '"' + String(v === null || v === undefined ? '' : v).replace(/"/g, '""') + '"';
+        const head = ['Script ID', 'Script Name', 'Script Type', 'Deployed On', 'Changed Item', 'Item Type', 'Saves', 'Changed By', 'First Change', 'Last Change', 'CR No.', 'คำอธิบาย (กรณีไม่มี CR)', 'ผู้ตรวจ / วันที่'];
+        const lines = [['Period', fromYmd + ' to ' + toYmd, 'Scripts', groups.filter(g => g.kind === 'script').length].map(q).join(','), head.map(q).join(',')];
+        groups.forEach(g => g.children.forEach(n => lines.push([g.scriptid || '', g.name, g.type, g.deployedOn.join(' '), n.label, n.kind, n.count, n.editors.join(', '), n.firstText, n.lastText, '', '', ''].map(q).join(','))));
+        return '﻿' + lines.join('\r\n');
+    }
+
     function run(fromYmd, toYmd) {
         const t0 = Date.now();
         const notes = fetchSystemNotes(fromYmd, toYmd);
@@ -481,6 +540,8 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
         res.noteRows = notes.length;
         res.ms = Date.now() - t0;
         res.actors = Object.keys(changes.reduce((m, c) => (m[c.actor] = 1, m), {})).length;
+        res.groups = groupByScript(changes);
+        res.scripts = res.groups.filter(g => g.kind === 'script').length;
         tbdllLog('run', fromYmd + '..' + toYmd + ' · systemnote ' + notes.length + ' แถว (' + (t1 - t0) + ' ms) · changes ' + res.total + ' · objects ' + res.objects +
             ' · flagged ' + res.flagged + ' · รวม ' + res.ms + ' ms');
         return res;
@@ -504,7 +565,7 @@ define(['N/query', './TB_DLL_Config'], (tbdllQuery, CFG) => {
         rectypes, rectypeWhere, typeOfNote, configWarnings, employeesWithRoles, deployerSet,
         fetchSystemNotes, groupChanges, attachObjectNames, attachActorNames, attachScriptInfo, probeRecordTypes, recordTypeLabel, daysBetween,
         suiteScriptFolderIds, fileIdsInScope, applyFileScope, autoDetectFileRectype,
-        summarize, run, toCsv,
+        summarize, run, toCsv, groupByScript, toGroupCsv,
         log: tbdllLog
     };
 });

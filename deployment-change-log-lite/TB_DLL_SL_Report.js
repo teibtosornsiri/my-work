@@ -80,7 +80,8 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
                     title: 'การเปลี่ยนแปลงใน PROD ' + per.fromText + ' – ' + per.toText,
                     meta: 'System Notes ' + res.noteRows + ' แถว · Export CSV แล้วกรอกเลข CR ทุกแถว แถวที่ไม่มี CR ให้เขียนคำอธิบาย แล้วให้ผู้ review เซ็น',
                     actions: [
-                        ui.button('Export CSV', { href: selfUrl({ f_from: per.fromYmd, f_to: per.toYmd, export: 'csv' }), icon: 'download', kind: 'primary' }),
+                        ui.button('Export CSV (ตาม Script)', { href: selfUrl({ f_from: per.fromYmd, f_to: per.toYmd, export: 'csvgroup' }), icon: 'download', kind: 'primary' }),
+                        ui.button('Export CSV (ทุก log)', { href: selfUrl({ f_from: per.fromYmd, f_to: per.toYmd, export: 'csv' }), icon: 'download', kind: 'ghost' }),
                         ui.button('Probe record types', { href: selfUrl({ view: 'probe', f_from: per.fromYmd, f_to: per.toYmd }), kind: 'ghost' })
                     ]
                 }),
@@ -98,6 +99,10 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
                     ui.card({ title: 'ตามผู้แก้', body: ui.barList(res.byActor.slice(0, 8)) })
                 ]) : '',
                 ui.tabs([
+                    {
+                        id: 'grp', label: 'ตาม Script', count: res.scripts,
+                        body: scriptDiagram(ui, res.groups || [])
+                    },
                     flagOn && {
                         id: 'flag', label: 'ติดธง', count: flaggedRows.length,
                         body: ui.table({ emptyTitle: 'ไม่มีรายการติดธง', emptyText: 'ทุกการเปลี่ยนแปลงทำโดยผู้มีสิทธิ์ deploy', columns, rows: flaggedRows })
@@ -121,6 +126,62 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
                     }
                 ].filter(Boolean))
             ]) + loadingOverlay(per);
+        }
+
+        /**
+         * ไดอะแกรมรวมตาม script: กล่อง script (ซ้าย) → สิ่งที่ถูกแก้ (ขวา) — ผู้ตรวจเห็นทีละ script ไม่ต้องไล่ทีละ log
+         */
+        function scriptDiagram(ui, groups) {
+            const esc = UI.esc;
+            if (!groups.length) return ui.empty('ไม่พบการเปลี่ยนแปลง', 'ไม่มีการแก้ Script / Deployment / ไฟล์โปรแกรม ในช่วงนี้');
+            const KIND = {
+                'Script': { t: 'Script', c: '#2563eb', bg: 'rgba(37,99,235,.08)' },
+                'Script Deployment': { t: 'Deployment', c: '#7c3aed', bg: 'rgba(124,58,237,.08)' },
+                'File': { t: 'File', c: '#0f766e', bg: 'rgba(15,118,110,.08)' }
+            };
+            const kind = k => KIND[k] || { t: k, c: '#6b7280', bg: 'rgba(107,114,128,.08)' };
+            const range = (a, b) => a === b ? a : a + ' → ' + b;
+            const css = '<style>'
+                + '.tbg{display:grid;grid-template-columns:minmax(240px,320px) 1fr;gap:0 32px;padding:16px;border-bottom:1px solid var(--line,#eceef2);align-items:center}'
+                + '.tbg:last-child{border-bottom:0}'
+                + '.tbg-root{border:2px solid var(--primary,#2563eb);background:rgba(37,99,235,.04);border-radius:10px;padding:12px 14px}'
+                + '.tbg-root.other{border-color:#9ca3af;background:#f9fafb}'
+                + '.tbg-root b{display:block;font-size:14px;margin:4px 0 2px;word-break:break-word}'
+                + '.tbg-root code{font-size:12px;color:#374151;word-break:break-all}'
+                + '.tbg-meta{margin-top:8px;font-size:12px;color:#6b7280;line-height:1.5}'
+                + '.tbg-chip{display:inline-block;font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;margin:2px 4px 0 0}'
+                + '.tbg-kids{position:relative;border-left:2px solid #c7d2fe;padding:2px 0 2px 20px;display:flex;flex-direction:column;gap:8px}'
+                + '.tbg-node{position:relative;border:1px solid var(--line,#e5e7eb);border-radius:8px;padding:8px 12px;background:#fff;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}'
+                + '.tbg-node:before{content:"";position:absolute;left:-22px;top:50%;width:20px;border-top:2px solid #c7d2fe}'
+                + '.tbg-node .lb{font-weight:600;word-break:break-word}'
+                + '.tbg-node .x{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:600}'
+                + '.tbg-node .sm{flex-basis:100%;font-size:12px;color:#6b7280}'
+                + '.tbg-bar{display:flex;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line,#eceef2)}'
+                + '.tbg-bar input{flex:1;max-width:360px;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px}'
+                + '@media(max-width:720px){.tbg{grid-template-columns:1fr;gap:12px}}'
+                + '</style>';
+            const body = groups.map(g => {
+                const isScript = g.kind === 'script';
+                const k = g.children.map(n => {
+                    const kd = kind(n.kind);
+                    return '<div class="tbg-node"><span class="tbg-chip" style="color:' + kd.c + ';background:' + kd.bg + '">' + esc(kd.t) + '</span>'
+                        + '<span class="lb">' + esc(n.label) + '</span>' + (n.sub ? '<span style="color:#6b7280;font-size:12px">' + esc(n.sub) + '</span>' : '')
+                        + '<span class="x">× ' + n.count + '</span>'
+                        + '<span class="sm">' + esc(n.editors.join(', ')) + ' · ' + esc(range(n.firstText, n.lastText)) + '</span></div>';
+                }).join('');
+                const search = [g.scriptid, g.name, g.type, g.deployedOn.join(' '), g.editors.join(' '), g.children.map(n => n.label).join(' ')].join(' ').toLowerCase();
+                return '<div class="tbg" data-q="' + esc(search) + '"><div class="tbg-root' + (isScript ? '' : ' other') + '">'
+                    + '<span class="tbg-chip" style="color:#fff;background:' + (isScript ? 'var(--primary,#2563eb)' : '#6b7280') + '">' + esc(g.type || '-') + '</span>'
+                    + '<b>' + esc(g.name || '-') + '</b>' + (g.scriptid ? '<code>' + esc(g.scriptid) + '</code>' : '')
+                    + (g.deployedOn.length ? '<div style="margin-top:6px">' + g.deployedOn.map(r => '<span class="tbg-chip" style="color:#7c3aed;background:rgba(124,58,237,.08)">deploy บน ' + esc(r) + '</span>').join('') + '</div>' : '')
+                    + '<div class="tbg-meta">แก้ ' + g.count + ' ครั้ง · ' + g.children.length + ' รายการ<br>' + esc(g.editors.join(', ')) + '<br>' + esc(range(g.firstText, g.lastText)) + '</div>'
+                    + '</div><div class="tbg-kids">' + k + '</div></div>';
+            }).join('');
+            const bar = '<div class="tbg-bar"><input id="tbdll-gq" placeholder="ค้นหา script / ไฟล์ / ผู้แก้"><span id="tbdll-gc" style="color:#6b7280">' + groups.length + ' กลุ่ม</span></div>';
+            const js = '<script>(function(){var i=document.getElementById("tbdll-gq");if(!i)return;i.addEventListener("keydown",function(e){if(e.key==="Enter")e.preventDefault();});'
+                + 'i.addEventListener("input",function(){var q=i.value.trim().toLowerCase(),n=0;document.querySelectorAll(".tbg").forEach(function(r){var ok=!q||r.getAttribute("data-q").indexOf(q)>=0;r.style.display=ok?"":"none";if(ok)n++;});'
+                + 'document.getElementById("tbdll-gc").textContent=n+" กลุ่ม";});})();</script>';
+            return css + bar + body + js;
         }
 
         /**
@@ -302,6 +363,11 @@ define(['N/ui/serverWidget', 'N/runtime', 'N/format', 'N/url', './Lib_Report_UI'
                     return page(ctx, buildProbe(ui, per, view, pf));
                 }
                 const res = L.run(per.fromYmd, per.toYmd);
+                if (p.export === 'csvgroup') {
+                    ctx.response.addHeader({ name: 'Content-Type', value: 'text/csv; charset=utf-8' });
+                    ctx.response.addHeader({ name: 'Content-Disposition', value: 'attachment; filename="prod_changes_by_script_' + per.fromYmd + '_' + per.toYmd + '.csv"' });
+                    return ctx.response.write(L.toGroupCsv(per.fromYmd, per.toYmd, res.groups));
+                }
                 if (p.export === 'csv') {
                     ctx.response.addHeader({ name: 'Content-Type', value: 'text/csv; charset=utf-8' });
                     ctx.response.addHeader({ name: 'Content-Disposition', value: 'attachment; filename="prod_changes_' + per.fromYmd + '_' + per.toYmd + '.csv"' });
